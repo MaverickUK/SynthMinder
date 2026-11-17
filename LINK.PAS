@@ -77,6 +77,8 @@ begin
   else if ( reason = 'notfound' ) then ReasonText := 'that file isn''t on the card'
   else if ( reason = 'nocdrom' ) then ReasonText := 'the Bay has no CD-ROM drive set up'
   else if ( reason = 'unknown' ) then ReasonText := 'the firmware doesn''t know that command'
+  else if ( reason = 'key' ) then ReasonText := 'the Bay can''t change that setting'
+  else if ( reason = 'card' ) then ReasonText := 'the Bay couldn''t write HDDSYNTH.INI on its card'
   else ReasonText := reason;
 end;
 

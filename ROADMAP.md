@@ -9,20 +9,27 @@ In thin slices, each one usable on its own.
 - [x] Finding the Bay on the IDE bus by IDENTIFY, and saying so when its firmware can't talk yet
 - [x] Unit tests (sentences, the model, the demo against the protocol)
 - [x] Built with Turbo Pascal 7 in DOSBox-X (`scripts/build.sh`)
-- [ ] Built with Free Pascal on GitHub Actions, with a release zip (CI written; first run when the repository is on GitHub)
+- [x] Built with Free Pascal on GitHub Actions, with a release zip; tagged releases (`scripts/release.sh`)
 - [ ] Tried on the Evesham: `SYNMIND` finds the Bay and says its firmware can't talk yet; `/DEMO` draws right on real VGA
 
 ## 0.2.0: the Bay talks (HDDSynthPro)
 
-- [ ] Command `8Dh` in `ata_device`, SEND and RECEIVE through core 0, no IORDY
-- [ ] `$SBQ STATUS`, `$SBQ FILES`, `$SBC DISC`, `$SBC SET device0`
+Built in IDE Synth Bay 0.36.0-dev.1 (branch `synthminder`), host-tested only.
+
+- [x] Command `8Dh` in `ata_device`, SEND and RECEIVE through core 0, no IORDY
+- [x] `$SBQ STATUS`, `$SBQ FILES`, `$SBC DISC`, `$SBC SET device0`
+- [ ] Core 1's new layout benchmarked and recorded (`-m speed`, `check_core1_layout.py --update`)
 - [ ] Rig tests through the USB adapter's ATA pass-through (Windows)
 - [ ] SynthMinder on the Evesham and the ICL 386: the Bay tab live
 
 ## 0.3.0: the synth through the Bay (HDDSynthPro and HDDSynth_Native)
 
-- [ ] The synth answers `$HDQ`/`$HDC` on the link UART (HDDSynth_Native)
-- [ ] The Bay relays `$HD…` sentences and collects the replies, beside `$HDA`/`$HDE`/`$HDM` (after the Synth Link's bring-up: HDDSynthPro's docs/synth-link-plan.md)
+Built in HDD Synth 0.25.0 (branch `synthminder-link`) and IDE Synth Bay 0.36.0-dev.1, host-tested only.
+
+- [x] The synth answers `$HDQ`/`$HDC` on the link UART (HDDSynth_Native)
+- [x] The Bay relays `$HD…` sentences and collects the replies, beside `$HDA`/`$HDE`/`$HDM`
+- [x] The Synth Link brought up, both wires (IDE Synth Bay 0.35.0 with HDD Synth 0.24.1, on a retro PC)
+- [ ] SynthMinder's requests relayed over it on the Evesham
 - [ ] The Synth tab live: volume, balance, pack
 
 ## Later

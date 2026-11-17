@@ -6,6 +6,10 @@ All notable changes to SynthMinder are documented here. The format is based on [
 
 ### Added
 - A `SHA256SUMS` file with each release's zip, to check the download.
+- Words for the Bay's `key` and `card` reasons (a setting it can't change; HDDSYNTH.INI it couldn't write).
+
+### Changed
+- The protocol's reference copy is HDDSynthPro's `docs/synthminder-protocol.md`, now that the firmware implements it (IDE Synth Bay 0.36.0-dev.1, HDD Synth 0.25.0).
 
 ## [0.1.0-dev.1] - 2026-11-17
 
