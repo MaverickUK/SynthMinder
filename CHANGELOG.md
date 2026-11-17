@@ -4,6 +4,9 @@ All notable changes to SynthMinder are documented here. The format is based on [
 
 ## [Unreleased]
 
+### Added
+- A `SHA256SUMS` file with each release's zip, to check the download.
+
 ## [0.1.0-dev.1] - 2026-11-17
 
 ### Added
@@ -14,3 +17,6 @@ All notable changes to SynthMinder are documented here. The format is based on [
 - Finding the Bay on the primary and secondary IDE channels by IDENTIFY, and saying so when there's none, or its firmware can't talk to SynthMinder yet.
 - `SYNMIND /STATUS` (print and exit), `/V`, and `/DUMP=SYNTH|BAY` (for tests: saves the screen).
 - Unit tests for the sentences, the model and the demo; `scripts/build.sh` builds and tests with Turbo Pascal 7 in DOSBox-X.
+
+[Unreleased]: https://github.com/MaverickUK/SynthMinder/compare/v0.1.0-dev.1...HEAD
+[0.1.0-dev.1]: https://github.com/MaverickUK/SynthMinder/releases/tag/v0.1.0-dev.1

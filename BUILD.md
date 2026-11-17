@@ -52,9 +52,19 @@ The [CI workflow](.github/workflows/ci.yml) has the full steps:
 
 The Pascal sources, `VERSION.INC` and text files keep CRLF line endings on every platform (`.gitattributes`), so they work as they are when copied to a DOS PC.
 
+## Versions and the changelog
+
+SynthMinder follows [Semantic Versioning](https://semver.org): `AppVersion` in [VERSION.INC](VERSION.INC) is the one place the version lives. Before 1.0.0, a minor version may change the protocol or the command line; a patch version only fixes.
+
+Every change worth mentioning gets a line under `## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md) ([Keep a Changelog](https://keepachangelog.com/en/1.1.0/): Added, Changed, Deprecated, Removed, Fixed, Security), in the same pull request. CI runs `scripts/check-version.sh` on every push and pull request.
+
 ## Releasing
 
-1. Update `AppVersion` in [VERSION.INC](VERSION.INC) (e.g. `0.1.0`, or `0.1.0-beta.1`).
-2. Move the `Unreleased` changes in [CHANGELOG.md](CHANGELOG.md) under that version and date.
-3. Check they match: `scripts/check-version.sh`
-4. Commit, tag `vX.Y.Z` and push the tag; the release workflow makes a draft release with the zip.
+```
+scripts/release.sh minor           # or major, patch, or a version: 0.2.0, 0.2.0-beta.1
+git push --atomic origin main v0.2.0
+```
+
+From a clean `main`, `release.sh` sets `VERSION.INC`, moves the Unreleased changes under the new version and today's date, updates the changelog's compare links, commits `Release X.Y.Z` and tags `vX.Y.Z`. It pushes nothing, so the commit can still be checked (`git show`) or undone (`git tag -d vX.Y.Z && git reset --hard HEAD~1`).
+
+Pushing the tag runs the [release workflow](.github/workflows/release.yml): the whole CI again, then, if the tag is on `main` and matches `VERSION.INC`, a **draft** GitHub release with `SynthMinder-X.Y.Z.zip`, `SHA256SUMS` and that version's changelog section as its notes. A version with a pre-release part (`-beta.1`) is marked as a pre-release. Review the draft on GitHub, then publish it.

@@ -1,14 +1,15 @@
 name: Release
 
-# Push a tag matching VERSION.INC (e.g. v0.1.0) to build and create a draft release.
-# Review the draft on GitHub, then publish.
+# scripts/release.sh tags vX.Y.Z (matching VERSION.INC); pushing the tag builds and
+# tests it, then creates a draft release with the zip, its checksum and this
+# version's CHANGELOG.md section. Review the draft on GitHub, then publish.
 
 on:
   push:
-    tags: ['v*']
+    tags: ['v[0-9]*']
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   ci:
@@ -17,35 +18,53 @@ jobs:
   release:
     needs: ci
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Check tag matches VERSION.INC
+      - name: Check the tag
         id: version
-        run: echo "version=$(scripts/check-version.sh "$GITHUB_REF_NAME")" >> "$GITHUB_OUTPUT"
+        run: |
+          # Releases come from main, and the tag must match VERSION.INC
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
+            || { echo "::error::$GITHUB_REF_NAME is not on main"; exit 1; }
+          echo "version=$(scripts/check-version.sh "$GITHUB_REF_NAME")" >> "$GITHUB_OUTPUT"
 
       - uses: actions/download-artifact@v4
         with:
           name: synthminder-package
           path: dist
 
+      - name: Checksum
+        run: cd dist && sha256sum -- *.zip | tee SHA256SUMS
+
+      - name: Release notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # This version's section of CHANGELOG.md, with its links to the repository's files made absolute
+          awk -v v="$VERSION" '
+            index($0, "## [" v "]") == 1 { found = 1; next }
+            /^## \[/ { found = 0 }
+            /^\[[^]]+\]: / { found = 0 }
+            found' CHANGELOG.md \
+            | sed -E "s#\]\(([A-Za-z_/]+\.md)\)#](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/\1)#g" \
+            > notes.md
+          grep -q '[^[:space:]]' notes.md || { echo "::error::CHANGELOG.md has no notes for $VERSION"; exit 1; }
+          cat notes.md
+
       - name: Create draft release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          # The notes are this version's section of CHANGELOG.md
-          awk -v v="$VERSION" '
-            index($0, "## [" v "]") == 1 { found = 1; next }
-            /^## \[/ { found = 0 }
-            found' CHANGELOG.md \
-            | sed -E "s#\]\(([A-Za-z_/]+\.md)\)#](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/\1)#g" \
-            > notes.md
-
           prerelease=""
           if [[ "$VERSION" == *-* ]]; then prerelease="--prerelease"; fi
 
-          gh release create "$GITHUB_REF_NAME" "dist/SynthMinder-${VERSION}.zip" \
+          gh release create "$GITHUB_REF_NAME" "dist/SynthMinder-${VERSION}.zip" dist/SHA256SUMS \
             --draft $prerelease \
             --title "SynthMinder ${VERSION}" \
             --notes-file notes.md

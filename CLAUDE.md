@@ -33,4 +33,4 @@ The owner is an experienced software architect (C#/.NET, TypeScript, Python), wh
 
 ## Versioning
 
-SemVer in `VERSION.INC` (`AppVersion`). Bump it with each change worth a build, add a `CHANGELOG.md` entry (Keep a Changelog), and keep `scripts/check-version.sh` passing.
+SemVer in `VERSION.INC` (`AppVersion`). Add a `CHANGELOG.md` entry under `[Unreleased]` (Keep a Changelog) with each notable change, and keep `scripts/check-version.sh` passing. Releases are cut with `scripts/release.sh <major|minor|patch|X.Y.Z>` (sets the version, dates the changelog, commits and tags; pushes nothing); BUILD.md has the steps.

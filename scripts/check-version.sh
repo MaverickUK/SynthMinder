@@ -16,6 +16,11 @@ if [[ ! "$version" =~ $semver ]]; then
   exit 1
 fi
 
+if ! grep -q "^## \[Unreleased\]" CHANGELOG.md; then
+  echo "CHANGELOG.md: no '## [Unreleased]' section" >&2
+  exit 1
+fi
+
 if ! grep -q "^## \[$version\]" CHANGELOG.md; then
   echo "CHANGELOG.md: no '## [$version]' section" >&2
   exit 1
