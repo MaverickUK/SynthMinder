@@ -1,0 +1,18 @@
+# DOS source and data files keep their CRLF line endings on every platform,
+# so they work as-is when copied to a DOS machine
+*.[Pp][Aa][Ss] -text diff
+*.[Ii][Nn][Cc] -text diff
+*.[Aa][Ss][Mm] -text diff
+*.[Tt][Xx][Tt] -text diff
+*.[Bb][Aa][Tt] -text diff
+
+*.[Tt][Pp][Uu] binary
+*.[Ee][Xx][Ee] binary
+*.jpg binary
+*.gif binary
+*.[Bb][Ii][Nn] binary
+*.py text eol=lf
+*.md text eol=lf
+
+*.sh text eol=lf
+*.yml text eol=lf

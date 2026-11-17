@@ -1,0 +1,149 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+env:
+  FPC_VERSION: 3.2.2
+
+jobs:
+  version:
+    name: Check version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/check-version.sh
+
+  unit-tests:
+    name: Unit tests (Free Pascal, Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Free Pascal
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq fpc
+      - name: Build tests
+        run: mkdir -p build && fpc -Mtp -Fu. -FUbuild -obuild/tests tests/TESTS.PAS
+      - name: Run tests
+        run: build/tests
+      - name: Check FpuFix starts first
+        # It must start before Crt, or SynthMinder hangs on PCs without an FPU: see FPUFIX.PAS
+        run: |
+          first=$(sed -n '/^uses/{n;p;q}' SYNMIND.PAS | tr -d ' \r')
+          echo "First unit: $first"
+          [[ "$first" == FpuFix,* ]]
+      - name: Check line lengths
+        # Turbo Pascal 7 stops at 126 characters
+        run: |
+          ! awk '{ sub(/\r$/, ""); if (length($0) > 120) { print FILENAME ":" FNR; bad = 1 } } END { exit !bad }' *.PAS tests/*.PAS
+
+  dos-build:
+    name: Build for DOS (Free Pascal i8086-msdos)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq fpc
+
+      - name: Cache i8086-msdos cross compiler
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: ~/fpc-msdos
+          key: fpc-${{ env.FPC_VERSION }}-i8086-msdos-large-v1
+
+      - name: Build i8086-msdos cross compiler
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          curl -sSL -o fpc-src.tar.gz \
+            "https://downloads.sourceforge.net/project/freepascal/Source/${FPC_VERSION}/fpc-${FPC_VERSION}.source.tar.gz"
+          tar xzf fpc-src.tar.gz
+          make -C "fpc-${FPC_VERSION}" crossall crossinstall \
+            CPU_TARGET=i8086 OS_TARGET=msdos \
+            CROSSOPT="-WmLarge -CX -XX" BINUTILSPREFIX= \
+            INSTALL_PREFIX="$HOME/fpc-msdos"
+
+      - name: Build SYNMIND.EXE and TESTS.EXE
+        run: |
+          PPC=$(find "$HOME/fpc-msdos" -name ppcross8086 -type f | head -1)
+          SYSTEM_PPU=$(find "$HOME/fpc-msdos" -path '*msdos*' -name system.ppu | head -1)
+          UNITS=$(dirname "$(dirname "$SYSTEM_PPU")")
+          mkdir -p build/dos
+          build() {
+            "$PPC" -Tmsdos -WmLarge -Mtp -O2 -Fu. -Fu"$UNITS/*" -FUbuild/dos -o"$2" "$1"
+          }
+          build SYNMIND.PAS build/dos/SYNMIND.EXE
+          build tests/TESTS.PAS build/dos/TESTS.EXE
+          ls -l build/dos/*.EXE
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: synmind-dos
+          path: |
+            build/dos/SYNMIND.EXE
+            build/dos/TESTS.EXE
+
+  dos-smoke:
+    name: Smoke test in DOSBox
+    needs: dos-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: synmind-dos
+          path: build/dos
+
+      - name: Install DOSBox
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq dosbox
+
+      - name: Run in DOSBox
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: |
+          cd build/dos
+          printf '%s\r\n' 'TESTS.EXE > TESTS.TXT' 'SYNMIND.EXE /V > VER.TXT' \
+            'SYNMIND.EXE /DEMO /STATUS > STATUS.TXT' 'SYNMIND.EXE /DEMO /DUMP=SYNTH' > SESSION.BAT
+          timeout 120 dosbox -c "mount c ." -c "c:" -c "CALL SESSION.BAT" -c "exit" > /dev/null 2>&1 \
+            || echo "DOSBox timed out"
+
+      - name: Show results
+        if: always()
+        run: |
+          cd build/dos
+          for f in TESTS VER STATUS; do echo "--- $f.TXT"; cat "$f.TXT" 2>/dev/null || echo "(missing)"; done
+          [ -f SCREEN.BIN ] && python3 ../../scripts/screen.py SCREEN.BIN || echo "(no SCREEN.BIN)"
+
+      - name: Check results
+        run: |
+          cd build/dos
+          grep -q " 0 failed" TESTS.TXT
+          grep -q "SynthMinder v$(../../scripts/check-version.sh)" VER.TXT
+          grep -q "Voice coil 1997" STATUS.TXT
+          python3 ../../scripts/screen.py SCREEN.BIN | grep -q "Sample packs"
+
+  package:
+    name: Package
+    needs: [version, unit-tests, dos-smoke]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: synmind-dos
+          path: build/dos
+      - name: Zip
+        run: |
+          version=$(scripts/check-version.sh)
+          mkdir -p dist/SynthMinder
+          cp build/dos/SYNMIND.EXE LICENSE dist/SynthMinder/
+          (cd dist && zip -r "SynthMinder-${version}.zip" SynthMinder)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: synthminder-package
+          path: dist/*.zip
