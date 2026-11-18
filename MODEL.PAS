@@ -7,7 +7,7 @@ Filled from the sentences they reply with (docs/protocol.md):
   $HDS  the synth's status        $SBV  one of the Bay's values
   $HDP  one of the synth's packs  $SBF  one file on the Bay's card
   $HDK  the synth's reply to a    $SBK  the Bay's reply to a command
-        command
+        command                   $SBS  one of the Bay's settings
 
 No screen or ports, so it's unit tested on any OS.
 ------------------------------}
@@ -19,6 +19,7 @@ const
   MaxPacks = 32;
   MaxFiles = 48;
   MaxValues = 20;
+  MaxSettings = 12;
 
   { File kinds on the Bay's card }
   KindHardDisk = 'H';
@@ -55,10 +56,20 @@ type
     Value: string[48];
   end;
 
+  { One of the settings SET can change: as HDDSYNTH.INI has it, used from
+    the next power-on, and as the Bay runs now }
+  TBaySetting = record
+    Key: string[16];
+    Next: string[32];
+    Now: string[32];
+  end;
+
   TBay = record
     Present: boolean;   { Found on the IDE bus, or the demo }
     Values: array[1..MaxValues] of TBayValue;
     ValueCount: integer;
+    Settings: array[1..MaxSettings] of TBaySetting;
+    SettingCount: integer; { 0: none, or firmware before 0.36.0 }
     Files: array[0..MaxFiles - 1] of TBayFile;
     FileCount: integer;
   end;
@@ -81,7 +92,11 @@ procedure ClearBay;
 function ApplyReply(line:string):boolean;
 function BayValue(key:string):string;
 procedure SetBayValue(key:string; value:string);
+{ A setting's index in Bay.Settings, or 0 if the Bay didn't send it }
+function SettingIndex(key:string):integer;
 function PackName(index:integer):string;
+{ A pack by number (from 0), folder or name, in any case: its index, or -1 }
+function FindPack(text:string):integer;
 function SupercapText:string;
 
 { --------- implementation --------- }
@@ -128,6 +143,18 @@ begin
   Bay.Values[Bay.ValueCount].Value := value;
 end;
 
+function SettingIndex(key:string):integer;
+var
+  i:integer;
+begin
+  SettingIndex := 0;
+  for i := 1 to Bay.SettingCount do
+    if ( Bay.Settings[i].Key = key ) then begin
+      SettingIndex := i;
+      exit;
+    end;
+end;
+
 { A pack's name, or its folder when it has no name of its own }
 function PackName(index:integer):string;
 begin
@@ -137,6 +164,32 @@ begin
     PackName := Synth.Packs[index].Name
   else
     PackName := Synth.Packs[index].Folder;
+end;
+
+function UpperOf(s:string):string;
+var
+  i:integer;
+begin
+  for i := 1 to length(s) do s[i] := UpCase(s[i]);
+  UpperOf := s;
+end;
+
+function FindPack(text:string):integer;
+var
+  i:integer;
+  number:longint;
+begin
+  FindPack := -1;
+  if FieldToInt(text, number) then begin
+    if ( number >= 0 ) and ( number < Synth.PacksKnown ) then FindPack := number;
+    exit;
+  end;
+  text := UpperOf(text);
+  for i := 0 to Synth.PacksKnown - 1 do
+    if ( UpperOf(Synth.Packs[i].Folder) = text ) or ( UpperOf(Synth.Packs[i].Name) = text ) then begin
+      FindPack := i;
+      exit;
+    end;
 end;
 
 { e.g. 5.08 V }
@@ -215,6 +268,26 @@ begin
   ApplyValue := true;
 end;
 
+{ $SBS,1,<key>,<next>,<now> }
+function ApplySetting(var f:TFields; n:integer):boolean;
+var
+  i:integer;
+begin
+  ApplySetting := false;
+  if ( n < 5 ) or ( length(f[3]) = 0 ) then exit;
+  i := SettingIndex(f[3]);
+  if ( i = 0 ) then begin
+    if ( Bay.SettingCount >= MaxSettings ) then exit;
+    inc(Bay.SettingCount);
+    i := Bay.SettingCount;
+  end;
+  Bay.Settings[i].Key := f[3];
+  Bay.Settings[i].Next := f[4];
+  Bay.Settings[i].Now := f[5];
+  Bay.Present := true;
+  ApplySetting := true;
+end;
+
 { $SBF,1,<index>,<count>,<name>,<sizeKB>,<kind> }
 function ApplyFile(var f:TFields; n:integer):boolean;
 var
@@ -249,7 +322,8 @@ begin
   else if ( f[1] = 'HDP' ) then ApplyReply := ApplyPack(f, n)
   else if ( f[1] = 'HDK' ) or ( f[1] = 'SBK' ) then ApplyReply := ApplyAck(f, n)
   else if ( f[1] = 'SBV' ) then ApplyReply := ApplyValue(f, n)
-  else if ( f[1] = 'SBF' ) then ApplyReply := ApplyFile(f, n);
+  else if ( f[1] = 'SBF' ) then ApplyReply := ApplyFile(f, n)
+  else if ( f[1] = 'SBS' ) then ApplyReply := ApplySetting(f, n);
 end;
 
 begin

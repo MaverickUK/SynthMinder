@@ -87,13 +87,17 @@ One `$SBV,1,<key>,<value>` per value. SynthMinder shows the keys it knows by nam
 
 One `$SBF,1,<index>,<count>,<name>,<sizeKB>,<kind>` per file in the card's root that the Bay could serve: kind `H` for a hard disk image (`.IMG`), `C` for a CD-ROM image (`.ISO`, `.CUE`). Names are 8.3, in alphabetical order.
 
+### `$SBQ,1,SETTINGS`: the settings SET can change
+
+One `$SBS,1,<key>,<next>,<now>` per setting: `device1`, `cdrom`, `seek_timing`, `activity_link`, `write_behind`, `read_ahead`, `sd_high_speed`. `<next>` is what `HDDSYNTH.INI` says (from the next start), `<now>` what the Bay runs with. Firmware before IDE Synth Bay 0.36.0 answers `ERR,unknown`, and the Settings tab says so. The values each takes: the reference copy (HDDSynthPro's `docs/synthminder-protocol.md`).
+
 ### `$SBC,1,DISC,<name>`: change the CD-ROM's disc
 
 As console `M`: the drive reports the disc changing (removal, new media, unit attention), as if the disc had been swapped. `-` ejects. Reply `$SBK,1,DISC,OK,` or `ERR,` with `nocdrom` (no CD-ROM drive set up), `notfound`, `busy`.
 
 ### `$SBC,1,SET,<key>,<value>`: change a setting in `HDDSYNTH.INI`
 
-As console `E`: the file is rewritten with that one setting changed, and it takes effect at the next start, never at once (the PC is running from the disk). Version 1 allows `device0` only, to an image on the card; reply `$SBK,1,SET,OK,` or `ERR,` with `key` (not allowed), `notfound`.
+As console `E`: the file is rewritten with that one setting changed, and it takes effect at the next start, never at once (the PC is running from the disk). `device0` (an image on the card), and since IDE Synth Bay 0.36.0 every key SETTINGS lists; reply `$SBK,1,SET,OK,` or `ERR,` with `key` (not allowed), `value` (not a value it takes), `notfound`, `card`.
 
 ### Errors
 

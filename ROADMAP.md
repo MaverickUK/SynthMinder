@@ -52,7 +52,9 @@ The test disk is `SYNTHMIN.IMG` on the Bay's card (FreeDOS, `SYNMIND.EXE` from t
 ## Later
 
 - Themes (GameMinder's `THEMES.TXT`), 43/50-line screens
-- Command-line changes for batch files: `/VOL=`, `/BAL=`, `/PACK=`, `/DISC=`
-- More of the Bay's settings, shown and then changed (with a warning where the PC must be right for them: the bus program, DMA)
+- [x] Command-line changes for batch files: `/VOL=`, `/BAL=`, `/PACK=`, `/DISC=`, `/Q` and ERRORLEVELs (18 Nov 2026; to try on the Evesham, and whether MSCDEX sees a disc changed by `/DISC=` at once)
+- [x] More of the Bay's settings: the Settings tab (second drive, HDD Synth, speed and safety), with IDE Synth Bay's `$SBQ,1,SETTINGS` and wider `SET` (18 Nov 2026; to try on the Evesham)
+- The rest of the Bay's settings, shown and then changed with a warning where the PC must be right for them: the bus program, DMA, the mode, the geometry (show only)
+- GameMinder: a CD image per game, put in the Bay's drive (`SYNMIND /DISC=`) before the game starts
 - The synth's model (`$HDM`) and the Bay's seek timing shown together
 - **FDD Synth Duo**: a third tab. The floppy cable carries no commands, so SynthMinder would talk to it through a mailbox in sectors: a reserved cylinder past the end of the disk (on whichever drive the Duo serves, whatever disk is in), or a virtual control drive B when that slot is free; a few tenths of a second an exchange. Ideas, and what to settle first: [docs/fdd-channel.md](docs/fdd-channel.md). To design with FDDSynthPro

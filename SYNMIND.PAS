@@ -7,6 +7,10 @@ SynthMinder: see and change the HDD Synth and IDE Synth Bay from DOS
   SYNMIND /STATUS   print what the Bay and synth say, and exit
   SYNMIND /V        print the version
 
+and for batch files (OPTIONS.PAS):
+
+  SYNMIND /DISC=QUAKE.ISO /PACK=3 /VOL=60 /BAL=50 /Q
+
 The Bay is found on the IDE bus and answers through its own
 command (docs/protocol.md); it passes the synth's sentences on
 over the Synth Link.
@@ -19,6 +23,7 @@ uses
     Model,
     Ide,
     Link,
+    Options,
     Screen;
 
 {$I VERSION.INC}
@@ -28,15 +33,49 @@ const
 
   MenuSynth = 0;
   MenuBay = 1;
-  MenuRefresh = 2;
-  MenuExit = 3;
-  MenuCount = 4;
-  MenuCaptions: array[0..MenuCount - 1] of string[8] = ('Synth', 'Bay', 'Refresh', 'Exit');
+  MenuSettings = 2;
+  MenuRefresh = 3;
+  MenuExit = 4;
+  MenuCount = 5;
+  MenuCaptions: array[0..MenuCount - 1] of string[8] = ('Synth', 'Bay', 'Settings', 'Refresh', 'Exit');
   MenuHints: array[0..MenuCount - 1] of string[78] = (
     'The HDD Synth: its sample pack, volume and balance',
     'The Bay''s SD card: change the CD, or the hard disk for the next power-on',
+    'The Bay''s settings: changes take effect from the next power-on',
     'Ask the Bay and the synth again',
     'Exit to DOS');
+
+  { The Settings tab's rows: a heading (no key), or a setting the Bay lists
+    with $SBQ,1,SETTINGS }
+  SettingRowCount = 10;
+  SettingRows: array[1..SettingRowCount] of record
+    Key: string[13];
+    Caption: string[16];
+  end = (
+    (Key:''; Caption:'Second drive'),
+    (Key:'device1'; Caption:'Device 1'),
+    (Key:'cdrom'; Caption:'CD at power-on'),
+    (Key:''; Caption:'HDD Synth'),
+    (Key:'seek_timing'; Caption:'Seek timing'),
+    (Key:'activity_link'; Caption:'Synth Link'),
+    (Key:''; Caption:'Speed and safety'),
+    (Key:'write_behind'; Caption:'Write-behind'),
+    (Key:'read_ahead'; Caption:'Read-ahead'),
+    (Key:'sd_high_speed'; Caption:'SD card speed'));
+  ChChanged = #249;  { A setting whose next value differs from now }
+
+  { The seek timings, for the chooser }
+  SeekCount = 6;
+  SeekValues: array[1..SeekCount] of string[9] = ('off', 'synth', 'stepper85', 'voice91', 'voice97', 'fdb05');
+  SeekWords: array[1..SeekCount] of string[38] = (
+    'as fast as the card allows',
+    'the drive the HDD Synth is playing',
+    'a 1985 stepper drive, 3600 rpm',
+    'a 1991 voice coil drive, 3600 rpm',
+    'a 1997 drive, 5400 rpm',
+    'a 2005 drive, 7200 rpm, 2 MB cache');
+
+  MaxChoices = MaxFiles + 2;
 
   { Rows of the Bay's list that aren't files }
   RowHardDisks = -1;
@@ -44,7 +83,11 @@ const
 
 var
   menuIndex:integer;
-  tab:integer;              { MenuSynth or MenuBay: what the panels show }
+  tab:integer;              { MenuSynth, MenuBay or MenuSettings: what the panels show }
+  setSel:integer;           { The Settings tab's row, 1..SettingRowCount, never a heading }
+  choiceValue:array[1..MaxChoices] of string[12];  { The chooser's choices }
+  choiceWords:array[1..MaxChoices] of string[40];
+  choiceCount:integer;
   packSel,packTop:integer;
   bayRows:array[0..MaxFiles + 1] of integer; { File index, or RowHardDisks/RowCdRoms }
   bayRowCount:integer;
@@ -448,6 +491,158 @@ begin
   ClearRight(y);
 end;
 
+{ ////////////////// Settings tab ////////////////// }
+
+{ A setting's value in words }
+function SettingText(key, value:string):string;
+begin
+  if ( key = 'device1' ) and ( value = 'cdrom' ) then SettingText := 'CD-ROM drive'
+  else if ( key = 'sd_high_speed' ) and ( value = 'on' ) then SettingText := 'high'
+  else if ( key = 'sd_high_speed' ) and ( value = 'off' ) then SettingText := 'normal'
+  else SettingText := value;
+end;
+
+{ Move the Settings tab's selection by a step, skipping the headings }
+procedure MoveSetSel(step:integer);
+var
+  next:integer;
+begin
+  next := setSel;
+  repeat
+    next := next + step;
+    if ( next < 1 ) or ( next > SettingRowCount ) then exit;
+  until length(SettingRows[next].Key) > 0;
+  setSel := next;
+end;
+
+procedure DrawSettingsLeft;
+var
+  y,fore,back:byte;
+  row,i:integer;
+  mark,text:string;
+begin
+  y := PanelTop;
+  if ( Bay.SettingCount = 0 ) then begin
+    LeftLine(y, 'Settings', ColorHeadingText, ColorHeadingBack);
+    LeftLine(y + 1, '', ColorText, ColorBackground);
+    LeftLine(y + 2, 'This Bay''s firmware can''t show its', ColorText, ColorBackground);
+    LeftLine(y + 3, 'settings: IDE Synth Bay 0.36.0 or', ColorText, ColorBackground);
+    LeftLine(y + 4, 'later can.', ColorText, ColorBackground);
+    ClearLeft(y + 5, FrameBottom - 1);
+    exit;
+  end;
+  if ( setSel < 1 ) or ( length(SettingRows[setSel].Key) = 0 ) then begin
+    setSel := 1;
+    MoveSetSel(1);
+  end;
+  for row := 1 to SettingRowCount do begin
+    if ( length(SettingRows[row].Key) = 0 ) then
+      LeftLine(y, SettingRows[row].Caption, ColorHeadingText, ColorHeadingBack)
+    else begin
+      i := SettingIndex(SettingRows[row].Key);
+      mark := ' ';
+      text := '  ' + PadRight(SettingRows[row].Caption, 17);
+      if ( i > 0 ) then begin
+        text := text + SettingText(SettingRows[row].Key, Bay.Settings[i].Next);
+        if ( Bay.Settings[i].Next <> Bay.Settings[i].Now ) then mark := ChChanged;
+      end
+      else
+        text := text + '-';
+      fore := ColorText;
+      back := ColorBackground;
+      if ( row = setSel ) and ( tab = menuIndex ) then begin
+        fore := ColorHighlightText;
+        back := ColorHighlightBack;
+      end;
+      LeftRow(y, text, mark, fore, back);
+    end;
+    inc(y);
+  end;
+  ClearLeft(y, FrameBottom - 2);
+  LeftLine(FrameBottom - 1, ChChanged + ' changed: from the next power-on', ColorNote, ColorBackground);
+end;
+
+{ What a setting does, in a few lines for the right panel }
+procedure SettingWords(var y:byte; key:string);
+
+  procedure Say(text:string);
+  begin
+    if ( y >= FrameBottom ) then exit;
+    RightLine(y, text, ColorText, ColorBackground);
+    inc(y);
+  end;
+
+begin
+  if ( key = 'device1' ) then begin
+    Say('The second drive on the cable: a');
+    Say('CD-ROM drive, a disk image, or none.');
+    Say('With a CD-ROM drive the Bay keeps to');
+    Say('its plain bus program, and DMA needs');
+    Say('dma = on in HDDSYNTH.INI.');
+  end
+  else if ( key = 'cdrom' ) then begin
+    Say('The disc in the CD-ROM drive when the');
+    Say('PC starts. To change the disc now, use');
+    Say('the Bay tab.');
+  end
+  else if ( key = 'seek_timing' ) then begin
+    Say('Hold each disk command for as long as');
+    Say('a real drive would take: the seek,');
+    Say('the platter coming round, the');
+    Say('transfer. synth follows the drive the');
+    Say('HDD Synth is playing.');
+  end
+  else if ( key = 'activity_link' ) then begin
+    Say('Tell the HDD Synth what the drive is');
+    Say('doing and where its head goes, so the');
+    Say('synth''s sounds follow the PC.');
+  end
+  else if ( key = 'write_behind' ) then begin
+    Say('Take each write while it''s still being');
+    Say('stored: writes about a third faster.');
+    Say('A power cut mid-write can lose that');
+    Say('sector.');
+  end
+  else if ( key = 'read_ahead' ) then begin
+    Say('Fetch the next sector while the PC');
+    Say('reads this one: faster reads.');
+  end
+  else if ( key = 'sd_high_speed' ) then begin
+    Say('Read the SD card at 40 MHz instead of');
+    Say('20 (the PCB). The Bay checks the card');
+    Say('at every start, and goes back to the');
+    Say('normal speed by itself if it must.');
+  end;
+end;
+
+procedure DrawSettingsRight;
+var
+  y:byte;
+  i:integer;
+  key:string;
+begin
+  y := PanelTop;
+  if ( Bay.SettingCount > 0 ) and ( setSel >= 1 ) and ( setSel <= SettingRowCount ) then begin
+    key := SettingRows[setSel].Key;
+    RightHeading(y, SettingRows[setSel].Caption);
+    RightGap(y);
+    SettingWords(y, key);
+    RightGap(y);
+    i := SettingIndex(key);
+    if ( i > 0 ) then begin
+      RightField(y, 'Now', SettingText(key, Bay.Settings[i].Now));
+      RightField(y, 'Next start', SettingText(key, Bay.Settings[i].Next));
+    end;
+    RightGap(y);
+    RightLine(y, 'Enter changes it, from the next', ColorNote, ColorBackground); inc(y);
+    RightLine(y, 'power-on: the PC runs from the Bay.', ColorNote, ColorBackground); inc(y);
+    RightGap(y);
+  end;
+  RightHeading(y, 'IDE Synth Bay');
+  BayFields(y);
+  ClearRight(y);
+end;
+
 { ////////////////// Screen ////////////////// }
 
 procedure DrawMenu;
@@ -479,6 +674,8 @@ procedure DrawFooterKeys;
 begin
   if ( tab = MenuSynth ) then
     DrawFooter(' [F1] Help  [Enter] Play pack  [+/-] Volume  [</>] Balance  [R] Refresh  [Esc] Exit')
+  else if ( tab = MenuSettings ) then
+    DrawFooter(' [F1] Help  [Enter] Change  [R] Refresh  [Esc] Exit')
   else
     DrawFooter(' [F1] Help  [Enter] Insert/Boot  [E] Eject disc  [R] Refresh  [Esc] Exit');
 end;
@@ -493,6 +690,10 @@ begin
   if ( tab = MenuSynth ) then begin
     DrawSynthLeft;
     DrawSynthRight;
+  end
+  else if ( tab = MenuSettings ) then begin
+    DrawSettingsLeft;
+    DrawSettingsRight;
   end
   else begin
     DrawBayLeft;
@@ -558,13 +759,14 @@ end;
 procedure Help;
 const
   Width = 64;
-  Lines = 15;
+  Lines = 16;
   HelpText: array[1..Lines] of string[60] = (
-    'Left/Right  choose from the menu: Synth, Bay, Refresh, Exit',
+    'Left/Right  the menu: Synth, Bay, Settings, Refresh, Exit',
     'Up/Down     move through the list',
     'Enter       on Synth: play the highlighted pack',
     '            on Bay: put a CD image in the CD-ROM drive, or',
     '            make a disk image the hard disk at next power-on',
+    '            on Settings: change the highlighted setting',
     '+ -         synth volume up or down',
     '< >         synth balance left or right',
     'E           take the disc out of the CD-ROM drive',
@@ -586,6 +788,67 @@ begin
     WriteAt(x1 + 3, y1 + 1 + i, PadRight(HelpText[i], Width - 5), Black, LightGray);
   WriteAt(x1 + Width div 2 - 8, y1 + Lines + 2, ' Press any key ', Blue, LightGray);
   if ( ReadKey = #0 ) then ReadKey;
+end;
+
+{ Choose one of choiceValue[1..choiceCount] (choiceWords beside each),
+  starting at `start`: its index, or 0 for Esc }
+function Choose(title:string; start:integer):integer;
+const
+  Width = 60;
+  Shown = 10;
+var
+  x1,y1:byte;
+  sel,top,i:integer;
+  key:char;
+  done:boolean;
+  fore,back:byte;
+begin
+  Choose := 0;
+  if ( choiceCount = 0 ) then exit;
+  x1 := ( Columns - Width ) div 2;
+  y1 := 5;
+  DrawBox(x1, y1, x1 + Width, y1 + Shown + 4, title);
+  WriteAt(x1 + 14, y1 + Shown + 3, ' Enter Choose   Esc Leave it ', Blue, LightGray);
+  sel := start;
+  if ( sel < 1 ) or ( sel > choiceCount ) then sel := 1;
+  top := 1;
+  done := false;
+  repeat
+    if ( sel < top ) then top := sel;
+    if ( sel >= top + Shown ) then top := sel - Shown + 1;
+    for i := top to top + Shown - 1 do begin
+      if ( i = sel ) then begin fore := White; back := Green; end else begin fore := Black; back := LightGray; end;
+      if ( i <= choiceCount ) then
+        WriteAt(x1 + 2, y1 + 2 + i - top, ' ' + PadRight(choiceValue[i], 13) + PadRight(choiceWords[i], Width - 18),
+                fore, back)
+      else
+        WriteAt(x1 + 2, y1 + 2 + i - top, PadRight('', Width - 3), Black, LightGray);
+    end;
+    key := ReadKey;
+    case key of
+      #0: begin
+        key := ReadKey;
+        case key of
+          #72: if ( sel > 1 ) then dec(sel);
+          #80: if ( sel < choiceCount ) then inc(sel);
+          #73: begin sel := sel - Shown; if ( sel < 1 ) then sel := 1; end;
+          #81: begin sel := sel + Shown; if ( sel > choiceCount ) then sel := choiceCount; end;
+          #71: sel := 1;
+          #79: sel := choiceCount;
+        end;
+      end;
+      #13: begin Choose := sel; done := true; end;
+      #27: done := true;
+    end;
+  until done;
+end;
+
+procedure AddChoice(value, words:string);
+begin
+  if ( choiceCount >= MaxChoices ) then exit;
+  inc(choiceCount);
+  choiceValue[choiceCount] := value;
+  choiceWords[choiceCount] := words;
 end;
 
 { ////////////////// Changes ////////////////// }
@@ -689,6 +952,78 @@ begin
   RefreshBay;
 end;
 
+{ What turning an on/off setting to `value` trades, for its question }
+function SettingWarning(key, value:string):string;
+begin
+  SettingWarning := '';
+  if ( key = 'write_behind' ) and ( value = 'on' ) then SettingWarning := 'A power cut mid-write can lose that sector.'
+  else if ( key = 'write_behind' ) then SettingWarning := 'Writes get about a third slower.'
+  else if ( key = 'read_ahead' ) and ( value = 'off' ) then SettingWarning := 'Reads get slower.'
+  else if ( key = 'activity_link' ) and ( value = 'off' ) then
+    SettingWarning := 'The HDD Synth goes back to its activity LED.';
+end;
+
+{ Enter on the Settings tab: choose a value for the highlighted setting
+  and save it, from the next power-on }
+procedure ChangeSetting;
+var
+  key,caption,current,value,message,turn:string;
+  i,pick,start:integer;
+begin
+  if ( Bay.SettingCount = 0 ) or ( setSel < 1 ) or ( setSel > SettingRowCount ) then exit;
+  key := SettingRows[setSel].Key;
+  caption := SettingRows[setSel].Caption;
+  i := SettingIndex(key);
+  if ( i = 0 ) then exit;
+  current := Bay.Settings[i].Next;
+  value := '';
+  choiceCount := 0;
+
+  if ( key = 'seek_timing' ) then begin
+    for i := 1 to SeekCount do AddChoice(SeekValues[i], SeekWords[i]);
+  end
+  else if ( key = 'device1' ) then begin
+    AddChoice('none', 'no second drive');
+    AddChoice('cdrom', 'a CD-ROM drive');
+    for i := 0 to Bay.FileCount - 1 do
+      if ( Bay.Files[i].Kind = KindHardDisk ) then AddChoice(Bay.Files[i].Name, 'a hard disk image')
+      else AddChoice(Bay.Files[i].Name, 'a CD-ROM drive with this disc');
+  end
+  else if ( key = 'cdrom' ) then begin
+    for i := 0 to Bay.FileCount - 1 do
+      if ( Bay.Files[i].Kind = KindCdRom ) then AddChoice(Bay.Files[i].Name, SizeText(Bay.Files[i].SizeKB));
+  end;
+
+  if ( choiceCount > 0 ) then begin
+    start := 1;
+    for i := 1 to choiceCount do
+      if ( choiceValue[i] = current ) then start := i;
+    pick := Choose(caption, start);
+    if ( pick = 0 ) then exit;
+    value := choiceValue[pick];
+  end
+  else begin
+    { On or off: a question, with what it trades }
+    if ( current = 'on' ) then value := 'off' else value := 'on';
+    if ( key = 'sd_high_speed' ) then begin
+      if ( value = 'on' ) then turn := 'Read the card at high speed' else turn := 'Read the card at normal speed';
+    end
+    else if ( value = 'on' ) then turn := 'Turn ' + caption + ' on'
+    else turn := 'Turn ' + caption + ' off';
+    if not Confirm(caption, turn + ' from the next power-on?', SettingWarning(key, value), 'Change') then exit;
+  end;
+
+  if ( value = current ) then begin
+    Done(true, caption + ' is already ' + SettingText(key, value));
+    exit;
+  end;
+  if Command('SBC,1,SET,' + key + ',' + value, message) then begin
+    Request('SBQ,1,SETTINGS');
+    Done(true, caption + ': ' + SettingText(key, value) + ' from the next power-on');
+  end
+  else Done(false, message);
+end;
+
 procedure RefreshNow;
 begin
   RefreshAll;
@@ -699,7 +1034,11 @@ end;
 
 procedure MoveList(step:integer);
 begin
-  if ( tab = MenuSynth ) then begin
+  if ( tab = MenuSettings ) then begin
+    while ( step < 0 ) do begin MoveSetSel(-1); inc(step); end;
+    while ( step > 0 ) do begin MoveSetSel(1); dec(step); end;
+  end
+  else if ( tab = MenuSynth ) then begin
     packSel := packSel + step;
     if ( packSel < 0 ) then packSel := 0;
     if ( packSel >= Synth.PacksKnown ) then packSel := Synth.PacksKnown - 1;
@@ -714,7 +1053,7 @@ end;
 procedure MoveMenu(step:integer);
 begin
   menuIndex := ( menuIndex + step + MenuCount ) mod MenuCount;
-  if ( menuIndex = MenuSynth ) or ( menuIndex = MenuBay ) then tab := menuIndex;
+  if ( menuIndex in [MenuSynth, MenuBay, MenuSettings] ) then tab := menuIndex;
 end;
 
 procedure HandleKey;
@@ -738,11 +1077,16 @@ begin
         #77: MoveMenu(1);                { Right }
       end;
     end;
-    #9: if ( tab = MenuSynth ) then begin menuIndex := MenuBay; tab := MenuBay; end
-        else begin menuIndex := MenuSynth; tab := MenuSynth; end;
+    #9: begin { Tab: Synth, Bay, Settings in turn }
+      if ( tab = MenuSynth ) then tab := MenuBay
+      else if ( tab = MenuBay ) then tab := MenuSettings
+      else tab := MenuSynth;
+      menuIndex := tab;
+    end;
     #13: case menuIndex of
       MenuSynth: PlayPack;
       MenuBay: InsertOrBoot;
+      MenuSettings: ChangeSetting;
       MenuRefresh: RefreshNow;
       MenuExit: quit := true;
     end;
@@ -796,6 +1140,95 @@ begin
   writeln('  SYNMIND /DEMO     try it with a pretend Bay and synth');
   writeln('  SYNMIND /STATUS   print what the Bay and synth say, and exit');
   writeln('  SYNMIND /V        print the version');
+  writeln;
+  writeln('For batch files, in the order given:');
+  writeln('  /DISC=QUAKE.ISO   put a CD image in the Bay''s CD-ROM drive (/DISC=- takes it out)');
+  writeln('  /PACK=3           play a sample pack, by number, folder or name');
+  writeln('  /VOL=60 /BAL=50   the synth''s volume and balance, 0-100');
+  writeln('  /Q                no messages, just the ERRORLEVEL:');
+  writeln('                    0 done, 1 a bad option, 2 no Bay, 3 refused, 4 no synth');
+end;
+
+{ ////////////////// Batch files ////////////////// }
+
+var
+  actions:array[1..MaxActions] of TAction;
+  actionCount:integer;
+  quiet:boolean;
+
+procedure Say(text:string);
+begin
+  if not quiet then writeln('SynthMinder: ', text);
+end;
+
+{ How a refused command ends: no synth (4), or refused (3) }
+function RefusedCode:integer;
+begin
+  if ( LastAck.Reason = 'nosynth' ) then RefusedCode := ExitNoSynth else RefusedCode := ExitRefused;
+end;
+
+{ Run one /DISC, /PACK, /VOL or /BAL: its ERRORLEVEL }
+function RunAction(var a:TAction):integer;
+var
+  message:string;
+  i:integer;
+begin
+  RunAction := ExitDone;
+  if ( a.Kind <> akDisc ) and not Synth.Present then begin
+    Say(ActionName(a.Kind) + ': no HDD Synth is answering on the Synth Link');
+    RunAction := ExitNoSynth;
+    exit;
+  end;
+  case a.Kind of
+    akDisc: begin
+      if ( BayValue('device1') <> 'cdrom' ) then begin
+        Say('/DISC: the Bay has no CD-ROM drive set up');
+        RunAction := ExitRefused;
+      end
+      else if Command('SBC,1,DISC,' + a.Text, message) then begin
+        if ( a.Text = '-' ) then Say('the CD-ROM drive is empty') else Say(a.Text + ' is in the CD-ROM drive');
+      end
+      else begin
+        Say('/DISC=' + a.Text + ': ' + message);
+        RunAction := RefusedCode;
+      end;
+    end;
+    akPack: begin
+      i := FindPack(a.Text);
+      if ( i < 0 ) then begin
+        Say('/PACK=' + a.Text + ': the synth has no such sample pack');
+        RunAction := ExitRefused;
+      end
+      else if Command('HDC,1,PACK,' + IntToStr(i), message) then Say('playing ' + PackName(i))
+      else begin
+        Say('/PACK=' + a.Text + ': ' + message);
+        RunAction := RefusedCode;
+      end;
+    end;
+    akVolume, akBalance: begin
+      if ( a.Kind = akVolume ) then message := 'VOL' else message := 'BAL';
+      if Command('HDC,1,' + message + ',' + IntToStr(a.Number), message) then begin
+        if ( a.Kind = akVolume ) then Say('volume ' + IntToStr(a.Number))
+        else Say('balance ' + IntToStr(a.Number));
+      end
+      else begin
+        Say(ActionName(a.Kind) + ': ' + message);
+        RunAction := RefusedCode;
+      end;
+    end;
+  end;
+end;
+
+{ Every action in turn; the first that fails ends it, with its ERRORLEVEL }
+procedure RunActions;
+var
+  i,code:integer;
+begin
+  for i := 1 to actionCount do begin
+    code := RunAction(actions[i]);
+    if ( code <> ExitDone ) then halt(code);
+  end;
+  halt(ExitDone);
 end;
 
 { ////////////////// Start ////////////////// }
@@ -815,7 +1248,9 @@ end;
 { /DUMP=SYNTH or BAY: draw that tab, save it and exit }
 procedure DumpScreen(which:string);
 begin
-  if ( which = 'BAY' ) then menuIndex := MenuBay else menuIndex := MenuSynth;
+  if ( which = 'BAY' ) then menuIndex := MenuBay
+  else if ( which = 'SETTINGS' ) then menuIndex := MenuSettings
+  else menuIndex := MenuSynth;
   tab := menuIndex;
   StartScreen;
   ClrScr;
@@ -826,19 +1261,35 @@ end;
 
 var
   i,j:integer;
-  arg:string;
+  arg,problem:string;
   demoMode,statusOnly:boolean;
   dumpTab:string[10];
+  action:TAction;
 begin
   UseDosOutput;
   demoMode := false;
   statusOnly := false;
   dumpTab := '';
+  actionCount := 0;
+  quiet := false;
   for i := 1 to ParamCount do begin
     arg := ParamStr(i);
     for j := 1 to length(arg) do arg[j] := UpCase(arg[j]);
     if ( arg[1] = '-' ) then arg[1] := '/';
-    if ( arg = '/DEMO' ) then demoMode := true
+    if ParseAction(arg, action, problem) then begin
+      if ( length(problem) > 0 ) then begin
+        writeln('SynthMinder: ', problem);
+        halt(ExitBadOption);
+      end;
+      if ( actionCount >= MaxActions ) then begin
+        writeln('SynthMinder: at most ', MaxActions, ' changes at once');
+        halt(ExitBadOption);
+      end;
+      inc(actionCount);
+      actions[actionCount] := action;
+    end
+    else if ( arg = '/Q' ) then quiet := true
+    else if ( arg = '/DEMO' ) then demoMode := true
     else if ( arg = '/STATUS' ) then statusOnly := true
     else if ( copy(arg, 1, 6) = '/DUMP=' ) then dumpTab := copy(arg, 7, 10)
     else if ( arg = '/V' ) then begin
@@ -847,7 +1298,7 @@ begin
     end
     else begin
       Usage;
-      if ( arg = '/?' ) or ( arg = '/H' ) then halt(0) else halt(1);
+      if ( arg = '/?' ) or ( arg = '/H' ) then halt(ExitDone) else halt(ExitBadOption);
     end;
   end;
 
@@ -855,20 +1306,26 @@ begin
     Backend := bkDemo
   else begin
     if not FindBay then begin
-      writeln('SynthMinder: no IDE Synth Bay found on the primary or secondary IDE channel.');
-      writeln('To try SynthMinder without one: SYNMIND /DEMO');
-      halt(1);
+      if not quiet then begin
+        writeln('SynthMinder: no IDE Synth Bay found on the primary or secondary IDE channel.');
+        writeln('To try SynthMinder without one: SYNMIND /DEMO');
+      end;
+      halt(ExitNoBay);
     end;
     Backend := bkIde;
   end;
 
   RefreshAll;
   if ( Backend = bkIde ) and not Bay.Present then begin
-    writeln('SynthMinder found the IDE Synth Bay (', BayDrive.Model, ', firmware ', BayDrive.Firmware, ')');
-    writeln('on the ', DriveName(BayDrive), ', but couldn''t talk to it:');
-    writeln(LinkProblem, '.');
-    halt(2);
+    if not quiet then begin
+      writeln('SynthMinder found the IDE Synth Bay (', BayDrive.Model, ', firmware ', BayDrive.Firmware, ')');
+      writeln('on the ', DriveName(BayDrive), ', but couldn''t talk to it:');
+      writeln(LinkProblem, '.');
+    end;
+    halt(ExitNoBay);
   end;
+
+  if ( actionCount > 0 ) then RunActions;
 
   if statusOnly then begin
     PrintStatus;
@@ -882,6 +1339,7 @@ begin
   packTop := 0;
   baySel := 0;
   bayTop := 0;
+  setSel := 0;
   note := '';
   quit := false;
 

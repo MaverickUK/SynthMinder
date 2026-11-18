@@ -78,6 +78,7 @@ begin
   else if ( reason = 'nocdrom' ) then ReasonText := 'the Bay has no CD-ROM drive set up'
   else if ( reason = 'unknown' ) then ReasonText := 'the firmware doesn''t know that command'
   else if ( reason = 'key' ) then ReasonText := 'the Bay can''t change that setting'
+  else if ( reason = 'value' ) then ReasonText := 'the Bay doesn''t take that value'
   else if ( reason = 'card' ) then ReasonText := 'the Bay couldn''t write HDDSYNTH.INI on its card'
   else ReasonText := reason;
 end;
@@ -117,6 +118,8 @@ begin
   ClearBay;
   if not Request('SBQ,1,STATUS') then exit;
   Request('SBQ,1,FILES');
+  { Firmware before 0.36.0 answers SETTINGS with ERR: Bay.SettingCount stays 0 }
+  Request('SBQ,1,SETTINGS');
 end;
 
 procedure RefreshAll;
