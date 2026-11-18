@@ -1,5 +1,8 @@
 # SynthMinder
 
+[![CI](https://github.com/MaverickUK/SynthMinder/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/MaverickUK/SynthMinder/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/github/v/tag/MaverickUK/SynthMinder?include_prereleases&sort=semver&label=version)](https://github.com/MaverickUK/SynthMinder/tags)
+
 ## See and change your HDD Synth, IDE Synth Bay and FDD Synth Duo from DOS
 
 SynthMinder runs on the DOS PC an [IDE Synth Bay](https://github.com/MaverickUK/HDDSynthPro) is fitted to. It shows how the Bay and the [HDD Synth](https://github.com/MaverickUK/HDDSynth_Native) behind it are set up (the synth's sample packs, volume and balance, the Bay's disk and CD-ROM images), and changes what can be changed: the synth's pack, volume and balance, the CD in the Bay's CD-ROM drive, and the Bay's hard disk for the next power-on. With an [FDD Synth Duo](https://github.com/MaverickUK/FDDSynthPro) on the floppy cable, it also changes the disk in each of its drives, its sample pack and its volume.
