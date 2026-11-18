@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/synthminder-logo.png" alt="SynthMinder logo: the name in yellow script across a white grid lit like a spectrum analyser on DOS blue, above &quot;The synth controller for DOS&quot;" width="400">
+</p>
+
 # SynthMinder
 
 [![CI](https://github.com/MaverickUK/SynthMinder/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/MaverickUK/SynthMinder/actions/workflows/ci.yml)
@@ -62,3 +66,9 @@ The ERRORLEVEL: 0 done, 1 a bad option, 2 no Bay found (or it didn't answer), 3 
 - [Roadmap](ROADMAP.md) and [changelog](CHANGELOG.md)
 
 SynthMinder follows [Semantic Versioning](https://semver.org). GPL-3.0, as GameMinder.
+
+---
+
+<p align="center">
+  <img src="docs/synthminder-banner.png" alt="SynthMinder banner: the name in yellow script across a white grid lit like a spectrum analyser on DOS blue, beside &quot;The synth controller for DOS&quot;" width="100%">
+</p>
