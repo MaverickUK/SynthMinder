@@ -46,6 +46,7 @@ const
 var
   DuoDrive: byte;          { The BIOS's drive the mailbox is on: 0 for A:, 1 for B: }
   ExchangeMs: longint;     { How long the last exchange took }
+  FdcLog: string;          { What the last FdcSeekMailbox saw }
   { What FindDuo found on each drive: FxOk (the Duo), another Fx, or -1 (no drive) }
   ProbeResult: array[0..MaxFloppies - 1] of integer;
 
@@ -59,6 +60,9 @@ function DuoExchange(request:string; var replies:TLines):integer;
 { Takes the head back to cylinder 0: the Duo swaps a disk it was asked
   to through the mailbox once the head has left it }
 procedure DuoPark;
+{ The head to cylinder 82 by the controller itself (see the implementation);
+  FdcLog says how it went, for SYNMIND /FDSEEK }
+procedure FdcSeekMailbox(drive:byte);
 { DOS writes out what it holds for the disks: before a disk is swapped }
 procedure FlushDos;
 { DOS reads that drive's disk afresh: after a swap, or a change
@@ -232,23 +236,73 @@ end;
   track. The motor on as the BIOS does it, and the BIOS told so; the seek's
   interrupt waited for (the BIOS's handler sets bit 7 of 40:3E) and cleared
   with Sense Interrupt Status, so the BIOS's next command starts clean }
+procedure Note(s:string);
+begin
+  if ( length(FdcLog) + length(s) < 250 ) then FdcLog := FdcLog + s + ' ';
+end;
+
+function Hex2(b:byte):string;
+const
+  Digits: string[16] = '0123456789ABCDEF';
+begin
+  Hex2 := Digits[b shr 4 + 1] + Digits[b and 15 + 1];
+end;
+
 procedure FdcSeekMailbox(drive:byte);
 var
   start:longint;
-  st0,pcn:byte;
+  b,st0,pcn:byte;
+  n:integer;
+  busy:boolean;
 begin
+  FdcLog := '';
   if ( drive > 1 ) then exit;
+  { The BIOS resets the controller first: out of reset, with its step rate
+    set (Specify) and the reset's interrupts taken. A BIOS that gave up on
+    a drive may have left it reset, or holding an interrupt, and then a
+    Seek is ignored (the Evesham's, 18 Nov) }
+  ResetDrive(drive);
+  Note('reset msr=' + Hex2(Port[FdcMsr]));
   Port[FdcDor] := $0C or drive or ( $10 shl drive );  { not reset, DMA and interrupts on, this drive's motor }
   Mem[$40:$3F] := Mem[$40:$3F] or ( 1 shl drive );   { the BIOS's motor bits: running }
   Mem[$40:$40] := $FF;                                { and its count to turning it off: about 14 s }
   WaitTicks(9);                                       { spin-up: half a second }
+  { Anything the controller still has to say, then any interrupt it holds }
+  n := 0;
+  while ( ( Port[FdcMsr] and $D0 ) = $D0 ) and ( n < 16 ) do begin
+    b := Port[FdcData];
+    inc(n);
+  end;
+  if ( n > 0 ) then Note('drained=' + IntToStr(n));
   Mem[$40:$3E] := Mem[$40:$3E] and $7F;
-  if not ( FdcWrite(FdcSeek) and FdcWrite(drive) and FdcWrite(Cylinder) ) then exit;
+  if FdcWrite(FdcSenseInterrupt) and FdcRead(st0) then begin
+    Note('sense st0=' + Hex2(st0));
+    if ( st0 <> $80 ) and FdcRead(pcn) then Note('pcn=' + IntToStr(pcn));
+  end;
+  Note('msr=' + Hex2(Port[FdcMsr]));
+  if not FdcWrite(FdcSeek) then begin
+    Note('seek refused');
+    exit;
+  end;
+  if not ( FdcWrite(drive) and FdcWrite(Cylinder) ) then begin
+    Note('seek args refused');
+    exit;
+  end;
+  Note('seek sent msr=' + Hex2(Port[FdcMsr]));
+  { Done when the controller interrupts (the BIOS's handler sets 40:3E bit 7);
+    the drive's busy bit in the main status shows the seek running }
   start := Ticks;
-  repeat until ( ( Mem[$40:$3E] and $80 ) <> 0 ) or ( Ticks - start > 18 ) or ( Ticks < start );
+  busy := false;
+  repeat
+    if ( Port[FdcMsr] and ( 1 shl drive ) ) <> 0 then busy := true;
+  until ( ( Mem[$40:$3E] and $80 ) <> 0 ) or ( Ticks - start > 27 ) or ( Ticks < start );
+  if ( Mem[$40:$3E] and $80 ) <> 0 then Note('irq') else Note('no irq');
+  if busy then Note('busy seen');
   Mem[$40:$3E] := Mem[$40:$3E] and $7F;
-  if FdcWrite(FdcSenseInterrupt) then
-    if FdcRead(st0) then FdcRead(pcn);
+  if FdcWrite(FdcSenseInterrupt) and FdcRead(st0) then begin
+    Note('st0=' + Hex2(st0));
+    if FdcRead(pcn) then Note('pcn=' + IntToStr(pcn));
+  end;
   Mem[$40:$94 + drive] := Cylinder;  { the BIOS's record of where the head is }
   WaitTicks(3);                      { the head settles }
 end;

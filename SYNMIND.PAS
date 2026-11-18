@@ -2157,12 +2157,14 @@ var
   arg,problem:string;
   demoMode,statusOnly:boolean;
   dumpTab:string[10];
+  fdSeek:char;     { /FDSEEK=A: a diagnostic, the controller's seek to cylinder 82 }
   action:TAction;
 begin
   UseDosOutput;
   demoMode := false;
   statusOnly := false;
   dumpTab := '';
+  fdSeek := ' ';
   actionCount := 0;
   quiet := false;
   for i := 1 to ParamCount do begin
@@ -2185,6 +2187,7 @@ begin
     else if ( arg = '/DEMO' ) then demoMode := true
     else if ( arg = '/STATUS' ) then statusOnly := true
     else if ( copy(arg, 1, 6) = '/DUMP=' ) then dumpTab := copy(arg, 7, 10)
+    else if ( copy(arg, 1, 8) = '/FDSEEK=' ) and ( length(arg) = 9 ) and ( arg[9] in ['A', 'B'] ) then fdSeek := arg[9]
     else if ( arg = '/V' ) then begin
       writeln(ApplicationName);
       halt(0);
@@ -2193,6 +2196,25 @@ begin
       Usage;
       if ( arg = '/?' ) or ( arg = '/H' ) then halt(ExitDone) else halt(ExitBadOption);
     end;
+  end;
+
+  { /FDSEEK=A: the head to cylinder 82 by the controller, what it said at each
+    step, and whether the Duo answers there (reads only) }
+  if ( fdSeek <> ' ' ) then begin
+    i := ord(fdSeek) - ord('A');
+    writeln('BIOS before: motors ', Mem[$40:$3F], ', media ', Mem[$40:$90 + i], ', cylinder ', Mem[$40:$94 + i]);
+    FdcSeekMailbox(i);
+    writeln('FDC: ', FdcLog);
+    writeln('BIOS after:  motors ', Mem[$40:$3F], ', media ', Mem[$40:$90 + i], ', cylinder ', Mem[$40:$94 + i]);
+    j := ProbeDuo(i);
+    case j of
+      FxOk: writeln('The Duo answered at cylinder 82');
+      FxNoDisk: writeln('Not ready (no disk, or the head isn''t at 82)');
+      FxRefused: writeln('The BIOS refused cylinder 82');
+    else
+      writeln('No answer at cylinder 82 (', j, ')');
+    end;
+    halt(0);
   end;
 
   if demoMode then begin
