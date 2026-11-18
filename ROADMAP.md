@@ -55,4 +55,4 @@ The test disk is `SYNTHMIN.IMG` on the Bay's card (FreeDOS, `SYNMIND.EXE` from t
 - Command-line changes for batch files: `/VOL=`, `/BAL=`, `/PACK=`, `/DISC=`
 - More of the Bay's settings, shown and then changed (with a warning where the PC must be right for them: the bus program, DMA)
 - The synth's model (`$HDM`) and the Bay's seek timing shown together
-- **FDD Synth Duo**: a third tab. It sits on the floppy bus, which has no spare command, so it needs a way of its own to talk to the PC (a reserved sector or track on a virtual disk, or through the Bay) — to design with FDDSynthPro
+- **FDD Synth Duo**: a third tab. The floppy cable carries no commands, so SynthMinder would talk to it through a mailbox in sectors: a reserved cylinder past the end of the disk (on whichever drive the Duo serves, whatever disk is in), or a virtual control drive B when that slot is free; a few tenths of a second an exchange. Ideas, and what to settle first: [docs/fdd-channel.md](docs/fdd-channel.md). To design with FDDSynthPro
