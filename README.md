@@ -6,9 +6,9 @@ SynthMinder runs on the DOS PC an [IDE Synth Bay](https://github.com/MaverickUK/
 
 It's [GameMinder](https://github.com/MaverickUK/GameMinder)'s sibling: the same PathMinder-style screen and colours.
 
-[![SynthMinder demo: choosing a sample pack, the volume and balance, help, and putting a CD image in the IDE Synth Bay's CD-ROM drive](docs/synthminder-demo.gif)](docs/synthminder-demo.mp4)
+[![SynthMinder demo: choosing a sample pack, the volume and balance, help, putting a CD image in the IDE Synth Bay's CD-ROM drive, and changing its settings](docs/synthminder-demo.gif)](docs/synthminder-demo.mp4)
 
-*SynthMinder in DOSBox-X, against its pretend Bay and synth (`SYNMIND /DEMO`): playing another sample pack, turning the volume up and the balance right, help, then the Bay tab: `QUAKE.ISO` put in the CD-ROM drive and taken out again. [Watch as MP4](docs/synthminder-demo.mp4). Recorded by `scripts/record-demo.sh`.*
+*SynthMinder in DOSBox-X, against its pretend Bay and synth (`SYNMIND /DEMO`): playing another sample pack, turning the volume up and the balance right, help, the Bay tab (`QUAKE.ISO` put in the CD-ROM drive and taken out again), then the Settings tab: seek timing set to a 2005 drive's from the next boot, and write-behind's question, left as it was. [Watch as MP4](docs/synthminder-demo.mp4). Recorded by `scripts/record-demo.sh`.*
 
 **Status: in development.** It runs against IDE Synth Bay firmware from its `synthminder` branch (0.36.0-dev) and the HDD Synth from its `synthminder-link` branch (0.25.0), and against a pretend Bay and synth (`SYNMIND /DEMO`). What's next: [ROADMAP.md](ROADMAP.md).
 
