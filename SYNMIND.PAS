@@ -1163,7 +1163,7 @@ begin
   end;
 
   if ( tab = MenuFloppy ) then begin
-    if ( DuoBackend = dbDemo ) then where := 'Demo: a pretend Duo on A: and B:'
+    if ( DuoBackend = dbDemo ) then where := 'Demo: a pretend Duo'
     else if ( DuoBackend = dbFloppy ) and TwoDuoDrives then where := 'Duo on drives A: and B: (cylinder 82)'
     else if ( DuoBackend = dbFloppy ) then where := 'Duo on drive ' + DriveLetter(DuoDrive) + ': (cylinder 82)'
     else where := 'No Duo on A: or B:';
