@@ -1516,7 +1516,8 @@ begin
     exit;
   end;
   if AwaitSwap(letter, name) then begin
-    if ( DuoBackend = dbFloppy ) then Done(true, 'Put ' + name + ' in ' + letter + ': (' + SecondsText(ExchangeMs) + ')')
+    if ( DuoBackend = dbFloppy ) then
+      Done(true, 'Put ' + name + ' in ' + letter + ': (' + SecondsText(ExchangeMs) + ')')
     else Done(true, 'Put ' + name + ' in ' + letter + ':');
   end
   else Done(true, name + ' is going into ' + letter + ': (R to see)');
