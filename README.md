@@ -6,33 +6,9 @@ SynthMinder runs on the DOS PC an [IDE Synth Bay](https://github.com/MaverickUK/
 
 It's [GameMinder](https://github.com/MaverickUK/GameMinder)'s sibling: the same PathMinder-style screen and colours.
 
-```
-Synth  Bay  Refresh  Exit                               SynthMinder v0.1.0-dev.1
-The HDD Synth: its sample pack, volume and balance
-╒══════════════════════════════════════╤═══════════════════════════════════════╕
-│ Sample packs                       6 │ HDD Synth                             │
-│   Desktop 3.5in 1993               R │ Firmware    v0.24.0                   │
-│   Laptop 2.5in 1996                R │ State       Running                   │
-│   Server SCSI 1995                 R │ Pack        Voice coil 1997           │
-│   Stepper 1985                     M │ Volume      ████████████░░░░░░░░ 60   │
-│   Voice coil 1991                  M │ Balance     L ─────────■─────── R 55  │
-│ ♫ Voice coil 1997                  M │ Supercap    5.08 V                    │
-│                                      │                                       │
-│                                      │ IDE Synth Bay                         │
-│                                      │ Firmware    0.35.0 (pcb_drive)        │
-│                                      │ Device 0    ICL386MB.IMG              │
-│                                      │ Device 1    CD-ROM: DOOM_SE.ISO       │
-│                                      │ Bus         PIO 3 data lane           │
-│                                      │ Seek timing synth 5400 rpm            │
-│                                      │ SD card     SDIO high speed           │
-│                                      │ Synth Link  up                        │
-│                                      │                                       │
-│                                      │                                       │
-│ ♫ playing now                        │                                       │
-│ M modelled   R recorded              │                                       │
-╘══╡ Demo: a pretend Bay and synth ╞═══╧═══════════════════════════════════════╛
- F1 Help  Enter Play pack  +/- Volume  </> Balance  R Refresh  Esc Exit
-```
+[![SynthMinder demo: choosing a sample pack, the volume and balance, help, and putting a CD image in the IDE Synth Bay's CD-ROM drive](docs/synthminder-demo.gif)](docs/synthminder-demo.mp4)
+
+*SynthMinder in DOSBox-X, against its pretend Bay and synth (`SYNMIND /DEMO`): playing another sample pack, turning the volume up and the balance right, help, then the Bay tab: `QUAKE.ISO` put in the CD-ROM drive and taken out again. [Watch as MP4](docs/synthminder-demo.mp4). Recorded by `scripts/record-demo.sh`.*
 
 **Status: 0.1.0 in development.** The screens work against a pretend Bay and synth (`SYNMIND /DEMO`). The Bay's firmware doesn't answer SynthMinder yet: that's the next step ([ROADMAP.md](ROADMAP.md)).
 

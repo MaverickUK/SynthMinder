@@ -5,6 +5,7 @@ All notable changes to SynthMinder are documented here. The format is based on [
 ## [Unreleased]
 
 ### Added
+- The README's demo animation (`docs/synthminder-demo.gif`, and an MP4), recorded in DOSBox-X by `scripts/record-demo.sh` from `SYNMIND /DEMO`, as GameMinder's is.
 - A `SHA256SUMS` file with each release's zip, to check the download.
 - Words for the Bay's `key` and `card` reasons (a setting it can't change; HDDSYNTH.INI it couldn't write).
 
