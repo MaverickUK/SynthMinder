@@ -1,6 +1,6 @@
 # The SynthMinder protocol
 
-**Status: draft, version 1.** SynthMinder's demo and unit tests follow it. No firmware does yet: the IDE Synth Bay's side and the HDD Synth's are in [ROADMAP.md](../ROADMAP.md). Once the Bay implements it, the Bay's repository (HDDSynthPro) holds the reference copy, as it does for the Synth Link, and this page points there.
+**Status: version 1, implemented by the firmware (host-tested; not yet run on a PC).** The reference copy is now HDDSynthPro's [`docs/synthminder-protocol.md`](https://github.com/MaverickUK/HDDSynthPro/blob/main/docs/synthminder-protocol.md) (IDE Synth Bay 0.36.0-dev.1, with HDD Synth firmware 0.25.0), which also says where the firmware differs from this draft in the details. This copy stays in step, since `DEMO.PAS` and `tests/TESTS.PAS` follow it.
 
 ```
 SYNMIND.EXE ──IDE: command 8Dh──▶ IDE Synth Bay ──Synth Link (UART)──▶ HDD Synth
@@ -87,19 +87,25 @@ One `$SBV,1,<key>,<value>` per value. SynthMinder shows the keys it knows by nam
 
 One `$SBF,1,<index>,<count>,<name>,<sizeKB>,<kind>` per file in the card's root that the Bay could serve: kind `H` for a hard disk image (`.IMG`), `C` for a CD-ROM image (`.ISO`, `.CUE`). Names are 8.3, in alphabetical order.
 
+### `$SBQ,1,SETTINGS`: the settings SET can change
+
+One `$SBS,1,<key>,<next>,<now>` per setting: `device1`, `cdrom`, `seek_timing`, `activity_link`, `write_behind`, `read_ahead`, `sd_high_speed`. `<next>` is what `HDDSYNTH.INI` says (from the next start), `<now>` what the Bay runs with. Firmware before IDE Synth Bay 0.36.0 answers `ERR,unknown`, and the Settings tab says so. The values each takes: the reference copy (HDDSynthPro's `docs/synthminder-protocol.md`).
+
 ### `$SBC,1,DISC,<name>`: change the CD-ROM's disc
 
 As console `M`: the drive reports the disc changing (removal, new media, unit attention), as if the disc had been swapped. `-` ejects. Reply `$SBK,1,DISC,OK,` or `ERR,` with `nocdrom` (no CD-ROM drive set up), `notfound`, `busy`.
 
 ### `$SBC,1,SET,<key>,<value>`: change a setting in `HDDSYNTH.INI`
 
-As console `E`: the file is rewritten with that one setting changed, and it takes effect at the next start, never at once (the PC is running from the disk). Version 1 allows `device0` only, to an image on the card; reply `$SBK,1,SET,OK,` or `ERR,` with `key` (not allowed), `notfound`.
+As console `E`: the file is rewritten with that one setting changed, and it takes effect at the next start, never at once (the PC is running from the disk). `device0` (an image on the card), and since IDE Synth Bay 0.36.0 every key SETTINGS lists; reply `$SBK,1,SET,OK,` or `ERR,` with `key` (not allowed), `value` (not a value it takes), `notfound`, `card`.
 
 ### Errors
 
 A request that isn't a valid sentence: `$SBK,1,REQUEST,ERR,invalid`. One the Bay doesn't know: `$SBK,1,<its first field>,ERR,unknown`. Values never contain `,`, `*` or `$`: the Bay replaces them with `_`, as the synth does in pack names.
 
-## What the firmware needs
+## What the firmware needed
+
+*Built: IDE Synth Bay 0.36.0-dev.1 (HDDSynthPro, branch `synthminder`) and HDD Synth 0.25.0 (HDDSynth_Native, branch `synthminder-link`). The firmware's limits and differences from this draft are in the reference copy. In short: a CD-ROM alone (`device0 = cdrom`) refuses 8Dh; a reply holds up to about 34 packs; SET can also answer `card`.*
 
 **IDE Synth Bay** (HDDSynthPro):
 - `ata_device`: command `8Dh` with the checks above; SEND as a PIO data-out of one sector, RECEIVE as a PIO data-in, each handed to core 0 like a `Fetch` (a new kind), BSY meanwhile. Core 1 does nothing slow, holds no IORDY, and nothing in it needs to be more than a few instructions. On every bus program that serves PIO; check the register table's data blocks and the data lane.

@@ -24,6 +24,10 @@ It runs Turbo Pascal inside DOSBox-X without a window (needs `dosbox-x`, and Tur
 
 To see a screen: `scripts/screen.py build/tp7/SYNTH.BIN` (text), or with `--html` (in its colours).
 
+## The README's demo
+
+`scripts/record-demo.sh path/to/SYNMIND.EXE` records `SYNMIND /DEMO` in DOSBox-X (keys typed by its `AUTOTYPE`, the screen by `DX-CAPTURE`, no window unless `--show`) and writes `docs/synthminder-demo.gif` and `.mp4` with ffmpeg. Use a Free Pascal build, from a CI run: `gh run download <run-id> -n synmind-dos`. To change what it shows, edit the script's `keys` line.
+
 In DOS itself, from the repository's directory:
 
 ```

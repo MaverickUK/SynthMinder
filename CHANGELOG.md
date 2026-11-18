@@ -5,7 +5,15 @@ All notable changes to SynthMinder are documented here. The format is based on [
 ## [Unreleased]
 
 ### Added
+- **The Settings tab**: the Bay's second drive (device 1, the CD at power-on), the HDD Synth (seek timing, the Synth Link) and speed and safety (write-behind, read-ahead, the SD card's speed), with what each does, what the Bay runs now and what it will from the next power-on (a dot marks a change). Enter changes one: a chooser for seek timing, device 1 and the CD; a question, with what it trades, for the on/off ones. Needs IDE Synth Bay 0.36.0's `$SBQ,1,SETTINGS` and its wider `SET`; with older firmware the tab says so.
+- **Command-line changes for batch files**: `/DISC=` (an image, or `-` to eject), `/PACK=` (by number, folder or name), `/VOL=`, `/BAL=`, and `/Q`, run in the order given, with an ERRORLEVEL for each outcome (`OPTIONS.PAS`, unit-tested).
+- The README's demo animation (`docs/synthminder-demo.gif`, and an MP4), recorded in DOSBox-X by `scripts/record-demo.sh` from `SYNMIND /DEMO`, as GameMinder's is.
 - A `SHA256SUMS` file with each release's zip, to check the download.
+- Words for the Bay's `key` and `card` reasons (a setting it can't change; HDDSYNTH.INI it couldn't write).
+
+### Changed
+- No Bay found now ends with ERRORLEVEL 2 (it was 1, now a bad option's), as does a Bay that doesn't answer.
+- The protocol's reference copy is HDDSynthPro's `docs/synthminder-protocol.md`, now that the firmware implements it (IDE Synth Bay 0.36.0-dev.1, HDD Synth 0.25.0).
 
 ## [0.1.0-dev.1] - 2026-11-17
 

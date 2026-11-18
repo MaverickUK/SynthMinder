@@ -49,11 +49,22 @@ const
     (Name:'DOOM_SE.ISO'; SizeKB:49152; Kind:'C'),
     (Name:'QUAKE.ISO'; SizeKB:305152; Kind:'C'));
 
+  { The settings SET can change, in the order the Bay gives them, and what
+    the pretend Bay runs with (SettingNow); SET changes SettingNext only }
+  SettingCount = 7;
+  SettingKeys: array[1..SettingCount] of string[13] = (
+    'device1', 'cdrom', 'seek_timing', 'activity_link', 'write_behind', 'read_ahead', 'sd_high_speed');
+  SettingNow: array[1..SettingCount] of string[12] = (
+    'cdrom', 'DOOM_SE.ISO', 'synth', 'on', 'on', 'on', 'on');
+
 var
   volume,balance,pack:integer;
   disc,device0,device0Next:string[12];
+  settingNext:array[1..SettingCount] of string[12];
 
 procedure DemoReset;
+var
+  i:integer;
 begin
   volume := 60;
   balance := 55;
@@ -61,6 +72,7 @@ begin
   disc := 'DOOM_SE.ISO';
   device0 := 'ICL386MB.IMG';
   device0Next := '';
+  for i := 1 to SettingCount do settingNext[i] := SettingNow[i];
 end;
 
 { ////////////////// Replies ////////////////// }
@@ -116,6 +128,14 @@ begin
                    + Files[i].Name + ',' + IntToStr(Files[i].SizeKB) + ',' + Files[i].Kind);
 end;
 
+procedure BaySettings(var replies:TLines);
+var
+  i:integer;
+begin
+  for i := 1 to SettingCount do
+    Reply(replies, 'SBS,1,' + SettingKeys[i] + ',' + settingNext[i] + ',' + SettingNow[i]);
+end;
+
 { The kind of a file on the pretend card, or ' ' if it isn't there }
 function FileKind(name:string):char;
 var
@@ -156,6 +176,47 @@ begin
     Ack(replies, 'HDK', f[3], 'unknown');
 end;
 
+{ SET for a setting SETTINGS lists: '' if the value can be right for the
+  key and is on the card where it has to be, else the reason, as the Bay
+  checks it }
+function CheckSetting(key, value:string):string;
+var
+  kind:char;
+begin
+  CheckSetting := 'value';
+  kind := FileKind(value);
+  if ( key = 'device1' ) then begin
+    if ( value = 'none' ) or ( value = 'cdrom' ) or ( kind in ['H', 'C'] ) then CheckSetting := ''
+    else if ( pos('.', value) > 0 ) then CheckSetting := 'notfound';
+  end
+  else if ( key = 'cdrom' ) then begin
+    if ( kind = 'C' ) then CheckSetting := ''
+    else if ( pos('.ISO', value) > 0 ) or ( pos('.CUE', value) > 0 ) then CheckSetting := 'notfound';
+  end
+  else if ( key = 'seek_timing' ) then begin
+    if ( value = 'off' ) or ( value = 'synth' ) or ( value = 'stepper85' ) or ( value = 'voice91' )
+       or ( value = 'voice97' ) or ( value = 'fdb05' ) then CheckSetting := '';
+  end
+  else if ( value = 'on' ) or ( value = 'off' ) then CheckSetting := '';
+end;
+
+procedure SetSetting(key, value:string; var replies:TLines);
+var
+  i,found:integer;
+  reason:string;
+begin
+  found := 0;
+  for i := 1 to SettingCount do
+    if ( SettingKeys[i] = key ) then found := i;
+  if ( found = 0 ) then begin
+    Ack(replies, 'SBK', 'SET', 'key');
+    exit;
+  end;
+  reason := CheckSetting(key, value);
+  if ( length(reason) = 0 ) then settingNext[found] := value;
+  Ack(replies, 'SBK', 'SET', reason);
+end;
+
 procedure BayCommand(var f:TFields; n:integer; var replies:TLines);
 begin
   if ( f[3] = 'DISC' ) and ( n >= 4 ) then begin
@@ -178,6 +239,8 @@ begin
       Ack(replies, 'SBK', 'SET', '');
     end;
   end
+  else if ( f[3] = 'SET' ) and ( n >= 5 ) then
+    SetSetting(f[4], f[5], replies)
   else
     Ack(replies, 'SBK', f[3], 'unknown');
 end;
@@ -198,6 +261,7 @@ begin
   else if ( f[1] = 'HDC' ) then SynthCommand(f, n, replies)
   else if ( f[1] = 'SBQ' ) and ( f[3] = 'STATUS' ) then BayStatus(replies)
   else if ( f[1] = 'SBQ' ) and ( f[3] = 'FILES' ) then BayFiles(replies)
+  else if ( f[1] = 'SBQ' ) and ( f[3] = 'SETTINGS' ) then BaySettings(replies)
   else if ( f[1] = 'SBC' ) then BayCommand(f, n, replies)
   else Ack(replies, 'SBK', f[1], 'unknown');
 end;
