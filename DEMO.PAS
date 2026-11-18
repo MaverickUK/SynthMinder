@@ -164,6 +164,11 @@ var
 begin
   for i := 1 to SettingCount do
     Reply(replies, 'SBS,1,' + SettingKeys[i] + ',' + settingNext[i] + ',' + SettingNow[i]);
+  { Shown only, as IDE Synth Bay 0.36.0-dev.2 adds them }
+  Reply(replies, 'SBS,1,bus,auto,lane');
+  Reply(replies, 'SBS,1,dma,auto,off');
+  Reply(replies, 'SBS,1,mode,auto,pio3');
+  Reply(replies, 'SBS,1,geometry,auto,243/16/63');
 end;
 
 { The kind of a file on the pretend card, or ' ' if it isn't there }

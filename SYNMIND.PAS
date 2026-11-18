@@ -55,8 +55,9 @@ const
   { The Settings tab's rows: a heading (no key), or a setting the Bay lists
     with $SBQ,1,SETTINGS, or (fd:) the Duo with $FDQ,1,SETTINGS. The Bay's
     show when it lists settings, the Duo's when it does }
-  SettingRowCount = 14;
-  DuoFirstRow = 11;
+  SettingRowCount = 19;
+  ShownFirstRow = 11;  { The bus's: shown only, as the Bay gives them (0.36.0-dev.2) }
+  DuoFirstRow = 16;
   SettingRows: array[1..SettingRowCount] of record
     Key: string[13];
     Caption: string[16];
@@ -71,6 +72,11 @@ const
     (Key:'write_behind'; Caption:'Write-behind'),
     (Key:'read_ahead'; Caption:'Read-ahead'),
     (Key:'sd_high_speed'; Caption:'SD card speed'),
+    (Key:''; Caption:'The bus, shown only'),
+    (Key:'bus'; Caption:'Bus program'),
+    (Key:'dma'; Caption:'DMA'),
+    (Key:'mode'; Caption:'Mode'),
+    (Key:'geometry'; Caption:'Geometry'),
     (Key:''; Caption:'FDD Synth Duo'),
     (Key:'fd:drive'; Caption:'Drives'),
     (Key:'fd:device0'; Caption:'Start disk A:'),
@@ -873,7 +879,17 @@ end;
 { A setting's value in words }
 function SettingText(key, value:string):string;
 begin
-  if ( key = 'fd:drive' ) then begin
+  if ( key = 'bus' ) then begin
+    if ( value = 'early' ) then SettingText := 'early answers'
+    else if ( value = 'lane' ) then SettingText := 'data lane'
+    else if ( value = 'table' ) then SettingText := 'register table'
+    else if ( value = 'noiordy' ) then SettingText := 'no IORDY'
+    else SettingText := value;
+  end
+  else if ( ( key = 'dma' ) or ( key = 'mode' ) ) and ( length(value) > 3 )
+          and ( ( copy(value, 1, 3) = 'pio' ) or ( copy(value, 1, 3) = 'mdm' ) or ( copy(value, 1, 3) = 'udm' ) ) then
+    SettingText := UpperText(copy(value, 1, length(value) - 1)) + ' ' + value[length(value)]
+  else if ( key = 'fd:drive' ) then begin
     if ( value = 'a_b' ) or ( value = 'a,b' ) then SettingText := 'A: and B:'
     else if ( value = 'b' ) then SettingText := 'B: only'
     else if ( value = 'a' ) then SettingText := 'A: only'
@@ -892,10 +908,18 @@ begin
   IsDuoRow := row >= DuoFirstRow;
 end;
 
-{ The Bay's rows show when it lists its settings, the Duo's when it does }
+{ Shown only: SET refuses these, HDDSYNTH.INI sets them }
+function IsShownOnlyRow(row:integer):boolean;
+begin
+  IsShownOnlyRow := ( row >= ShownFirstRow ) and ( row < DuoFirstRow );
+end;
+
+{ The Bay's rows show when it lists its settings (the bus's when it lists
+  them too), the Duo's when it does }
 function RowShown(row:integer):boolean;
 begin
   if IsDuoRow(row) then RowShown := Duo.SettingCount > 0
+  else if IsShownOnlyRow(row) then RowShown := SettingIndex('bus') > 0
   else RowShown := Bay.SettingCount > 0;
 end;
 
@@ -966,7 +990,9 @@ begin
     else begin
       mark := ' ';
       text := '  ' + PadRight(SettingRows[row].Caption, 17);
-      if RowSetting(row, next, now) then begin
+      if RowSetting(row, next, now) and IsShownOnlyRow(row) then
+        text := text + SettingText(SettingRows[row].Key, now)  { What runs: the file may say auto }
+      else if RowSetting(row, next, now) then begin
         text := text + SettingText(SettingRows[row].Key, next);
         if ( next <> now ) then mark := ChChanged;
       end
@@ -1031,6 +1057,26 @@ begin
     Say('Fetch the next sector while the PC');
     Say('reads this one: faster reads.');
   end
+  else if ( key = 'bus' ) then begin
+    Say('How the Bay answers the IDE bus: early');
+    Say('answers, the data lane (faster), plain');
+    Say('ide_bus, or the register table. auto');
+    Say('learns the PC at each reset.');
+  end
+  else if ( key = 'dma' ) then begin
+    Say('Multiword DMA, offered to the PC: auto');
+    Say('offers it once the Bay has learned the');
+    Say('PC can take it.');
+  end
+  else if ( key = 'mode' ) then begin
+    Say('The fastest PIO (or DMA) mode IDENTIFY');
+    Say('offers the PC.');
+  end
+  else if ( key = 'geometry' ) then begin
+    Say('The cylinders, heads and sectors the');
+    Say('BIOS sees: from the image''s partition');
+    Say('table, or set for an old drive''s image.');
+  end
   else if ( key = 'fd:drive' ) then begin
     Say('The FDD Synth Duo answers as drive A:,');
     Say('or as A: and B: with a disk in each.');
@@ -1069,12 +1115,20 @@ begin
     RightGap(y);
     SettingWords(y, key);
     RightGap(y);
-    if RowSetting(setSel, next, now) then begin
+    if RowSetting(setSel, next, now) and IsShownOnlyRow(setSel) then begin
+      RightField(y, 'Now', SettingText(key, now));
+      RightField(y, 'The file', SettingText(key, next));
+    end
+    else if RowSetting(setSel, next, now) then begin
       RightField(y, 'Now', SettingText(key, now));
       RightField(y, 'Next start', SettingText(key, next));
     end;
     RightGap(y);
-    if duoRow then begin
+    if IsShownOnlyRow(setSel) then begin
+      RightNote(y, 'Shown only: the PC must be right for');
+      RightNote(y, 'it, so it''s set in HDDSYNTH.INI.');
+    end
+    else if duoRow then begin
       RightNote(y, 'Enter changes it: the Duo reads it when');
       RightNote(y, 'it starts, the next time the PC is on.');
     end
@@ -1670,6 +1724,10 @@ var
 begin
   if ( setSel >= 1 ) and ( setSel <= SettingRowCount ) and IsDuoRow(setSel) then begin
     ChangeDuoSetting;
+    exit;
+  end;
+  if ( setSel >= 1 ) and ( setSel <= SettingRowCount ) and IsShownOnlyRow(setSel) then begin
+    Done(true, SettingRows[setSel].Caption + ' is shown only: HDDSYNTH.INI sets it');
     exit;
   end;
   if ( Bay.SettingCount = 0 ) or ( setSel < 1 ) or ( setSel > SettingRowCount ) then exit;

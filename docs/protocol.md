@@ -91,6 +91,8 @@ One `$SBF,1,<index>,<count>,<name>,<sizeKB>,<kind>` per file in the card's root 
 
 One `$SBS,1,<key>,<next>,<now>` per setting: `device1`, `cdrom`, `seek_timing`, `activity_link`, `write_behind`, `read_ahead`, `sd_high_speed`. `<next>` is what `HDDSYNTH.INI` says (from the next start), `<now>` what the Bay runs with. Firmware before IDE Synth Bay 0.36.0 answers `ERR,unknown`, and the Settings tab says so. The values each takes: the reference copy (HDDSynthPro's `docs/synthminder-protocol.md`).
 
+Since IDE Synth Bay 0.36.0-dev.2 the list ends with four **shown only**: `bus`, `dma`, `mode` and `geometry` (SET refuses them with `key`: the PC must be right for each, so they're set in `HDDSYNTH.INI`). For them `<now>` is what runs: the bus program (`early`, `lane`, `ide_bus`, `table`), the DMA and PIO modes offered (`mdma2`, `pio3`), the CHS geometry IDENTIFY reports.
+
 ### `$SBC,1,DISC,<name>`: change the CD-ROM's disc
 
 As console `M`: the drive reports the disc changing (removal, new media, unit attention), as if the disc had been swapped. `-` ejects. Reply `$SBK,1,DISC,OK,` or `ERR,` with `nocdrom` (no CD-ROM drive set up), `notfound`, `busy`.

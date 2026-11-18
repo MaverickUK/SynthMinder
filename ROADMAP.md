@@ -60,14 +60,19 @@ Built on 18 Nov 2026 in SynthMinder branch `fdd-duo` (PR MaverickUK/SynthMinder#
 - [ ] BIOSes that check the cylinder against their drive table and refuse 82: program the controller directly (ports 3F0h-3F7h, DMA channel 2)
 - [x] The mailbox with no disk in: at cylinder 82 an empty Duo answers as if a disk were in, and SynthMinder seeks there itself when the BIOS says not ready (Duo 0.25.0-dev.2; to try on a PC: does the BIOS look at the change line before it seeks?)
 - [x] The seek's sound: the trip back from cylinder 82 is silent (Duo 0.25.0-dev.2); the trip out is heard, since it's like any other seek until it ends
-- [ ] A GameMinder floppy per game (`SYNMIND /FDA=`), as with CDs
+- [ ] A floppy per game from GameMinder: see *GameMinder: the right disc and disk for each game*, below
 
 ## Later
 
 - Themes (GameMinder's `THEMES.TXT`), 43/50-line screens
 - [x] Command-line changes for batch files: `/VOL=`, `/BAL=`, `/PACK=`, `/DISC=`, `/Q` and ERRORLEVELs (18 Nov 2026; to try on the Evesham, and whether MSCDEX sees a disc changed by `/DISC=` at once)
 - [x] More of the Bay's settings: the Settings tab (second drive, HDD Synth, speed and safety), with IDE Synth Bay's `$SBQ,1,SETTINGS` and wider `SET` (18 Nov 2026; to try on the Evesham)
-- The rest of the Bay's settings, shown and then changed with a warning where the PC must be right for them: the bus program, DMA, the mode, the geometry (show only)
-- GameMinder: a CD image per game, put in the Bay's drive (`SYNMIND /DISC=`) before the game starts
+- [x] The bus's settings, shown only on the Settings tab: the bus program, DMA, the mode, the geometry (IDE Synth Bay 0.36.0-dev.2's SETTINGS; 18 Nov 2026). Changing them stays in HDDSYNTH.INI: the PC must be right for each
+- **GameMinder: the right disc and disk for each game.** A game's `!GM_INFO.TXT` names what it needs, and GameMinder has SynthMinder put it in before the game starts, as a person would before typing the game's name:
+  - **New keys:** `cd:QUAKE.ISO` (into the Bay's CD-ROM drive), `floppy:MONKEY1.IMG` (into the Duo's A:; `floppyb:` for B:), and `synthpack:` / `floppypack:` for the sound to go with it (a 1990 game on the 1985 stepper drive's pack).
+  - **The call:** GameMinder runs `SYNMIND /DISC=... /FDA=... /PACK=... /Q` before the game's `exec:` (a `SynthMinder=` path in its `SETTINGS.TXT`, else `SYNMIND` on the PATH), and reads the ERRORLEVEL. On anything but 0 it says why (no Bay, no Duo, not on the card) and asks whether to start the game anyway.
+  - **What's already there:** SynthMinder's options, run in order, and `/FDA=` waiting until the disk is in and DOS has been told (so `exec:A:\MONKEY.EXE` works straight after). GameMinder needs only the keys, the setting and the call; ExecWithSwap leaves room for SYNMIND then the game, one after the other.
+  - **To try first, on a PC:** whether MSCDEX sees a disc changed by `/DISC=` at once (or the game needs a moment), and how long `/FDA=` adds to a launch (about two seconds: the exchange, the swap, the check).
+  - **Later:** games on several floppies (swapping mid-game is the Duo's front panel, or `SYNMIND /FDA=` from a shell), and GameMinder's own screen showing which disc or disk a game will use.
 - The synth's model (`$HDM`) and the Bay's seek timing shown together
 - **FDD Synth Duo**: the Floppy tab, below (0.4.0)

@@ -227,7 +227,7 @@ begin
   DemoReset;
   ClearBay;
   Ask('SBQ,1,SETTINGS');
-  CheckInt('demo settings', 7, Bay.SettingCount);
+  CheckInt('demo settings', 11, Bay.SettingCount);  { 7 SET changes, 4 shown only }
   CheckStr('demo first setting', 'device1', Bay.Settings[1].Key);
   CheckStr('demo device 1', 'cdrom', Bay.Settings[SettingIndex('device1')].Now);
   Ask('SBC,1,SET,seek_timing,fdb05');
@@ -360,6 +360,21 @@ begin
   CheckStr('duo unknown source', 'FDK', LastAck.Source);
 end;
 
+{ The bus's settings, shown only (IDE Synth Bay 0.36.0-dev.2) }
+procedure TestShownOnly;
+begin
+  DemoReset;
+  ClearBay;
+  Ask('SBQ,1,SETTINGS');
+  CheckBool('bus listed', true, SettingIndex('bus') > 0);
+  CheckStr('bus now', 'lane', Bay.Settings[SettingIndex('bus')].Now);
+  CheckStr('geometry now', '243/16/63', Bay.Settings[SettingIndex('geometry')].Now);
+  CheckBool('room for them all', true, Bay.SettingCount <= MaxSettings);
+  CheckInt('eleven settings', 11, Bay.SettingCount);
+  Ask('SBC,1,SET,bus,early');
+  CheckStr('bus refused', 'key', LastAck.Reason);
+end;
+
 procedure TestDuoOptions;
 var
   a:TAction;
@@ -393,6 +408,7 @@ begin
   TestOptions;
   TestDuo;
   TestDuoOptions;
+  TestShownOnly;
   writeln(Passes, ' passed, ', Failures, ' failed');
   if ( Failures > 0 ) then halt(1);
 end.
