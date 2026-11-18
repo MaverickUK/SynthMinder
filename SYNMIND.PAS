@@ -792,9 +792,9 @@ begin
     end;
   end;
   RightGap(y);
-  RightNote(y, 'The Duo answers from its firmware');
-  RightNote(y, '0.25.0 (its USB console''s h says),');
-  RightNote(y, 'with a PC disk in the drive.');
+  RightNote(y, 'The Duo needs a disk in to be found:');
+  RightNote(y, 'put one in from its panel, then R.');
+  RightNote(y, 'It answers from its firmware 0.25.0.');
 end;
 
 procedure DuoFields(var y:byte);
@@ -1634,7 +1634,8 @@ procedure EjectFloppy;
 var
   code,k:integer;
   letter:char;
-  letters,disk,message:string;
+  letters,disk,message,line2:string;
+  mailbox:boolean;
 begin
   if not Duo.Present then exit;
   letter := ' ';
@@ -1654,14 +1655,25 @@ begin
     letter := choiceValue[k][1];
   end;
   disk := DuoDisk(letter);
-  { The Duo's mailbox still answers with the drive empty (at cylinder 82 only) }
-  if not Confirm('Eject', 'Take ' + DuoDiskText(disk) + ' out of ' + letter + ':?', '', 'Eject') then exit;
+  { The BIOS won't read a drive with no disk in, so SynthMinder loses the Duo
+    when the disk it talks through comes out (unless the other drive has one) }
+  mailbox := ( DuoBackend = dbFloppy ) and ( letter = DriveLetter(DuoDrive) )
+             and not ( TwoDuoDrives and ( length(DuoDisk(chr(ord('A') + ord('B') - ord(letter)))) > 0 ) );
+  if mailbox then line2 := 'SynthMinder then loses the Duo until a disk is in.' else line2 := '';
+  if not Confirm('Eject', 'Take ' + DuoDiskText(disk) + ' out of ' + letter + ':?', line2, 'Eject') then exit;
   if ( DuoBackend = dbFloppy ) then FlushDos;
   if not Command('FDC,1,EJECT,' + letter, message) then begin
     Done(false, message);
     exit;
   end;
-  if AwaitSwap(letter, '') then Done(true, letter + ': is empty')
+  if mailbox then begin
+    ProbeResult[DuoDrive] := FxNoDisk;
+    DuoBackend := dbNone;
+    DuoLooked := true;
+    ClearDuo;
+    Done(true, letter + ': is empty: put a disk in from the Duo''s panel, then R');
+  end
+  else if AwaitSwap(letter, '') then Done(true, letter + ': is empty')
   else Done(true, 'Taking ' + DuoDiskText(disk) + ' out of ' + letter + ':');
 end;
 

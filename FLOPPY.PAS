@@ -311,9 +311,15 @@ end;
   motor still spinning up fails the first). A disk change is noted and
   tried again. A drive that isn't ready is tried once more with the head
   at cylinder 82 first: a Duo with no disk in answers only there, and a
-  BIOS may look at the disk change line before it seeks; if the BIOS still
-  won't move the head, the controller moves it (FdcSeekMailbox). Each
-  not-ready waits seconds, so no more than that }
+  BIOS may look at the disk change line before it seeks. Each not-ready
+  waits seconds, so no more than that.
+
+  Not the controller's own seek (FdcSeekMailbox): on the Evesham (18 Nov
+  2026) it got the head to 82, but the BIOS recalibrates before every read
+  on a drive whose disk it hasn't recognised, and read at cylinder 0, where
+  an empty drive has nothing. So the Duo needs a disk in to be found; with
+  none, SynthMinder will have to do the whole exchange with the controller
+  and DMA itself (the roadmap) }
 function Bios(fn:byte; drive:byte; sector, count:byte):byte;
 var
   tries:integer;
@@ -331,12 +337,6 @@ begin
       SeekMailbox(drive);
       status := BiosOnce(fn, drive, sector, count);
       if ( status = BsChanged ) and ( drive < MaxFloppies ) then changed[drive] := true;
-      { Still not ready: the BIOS wouldn't move the head. The controller moves it }
-      if ( status = BsTimeout ) then begin
-        FdcSeekMailbox(drive);
-        status := BiosOnce(fn, drive, sector, count);
-        if ( status = BsChanged ) and ( drive < MaxFloppies ) then changed[drive] := true;
-      end;
     end;
     if ( status = 0 ) or ( status = BsTimeout ) or ( status = BsBadCommand ) then begin
       Bios := status;
