@@ -1019,7 +1019,7 @@ begin
   end;
   if Command('SBC,1,SET,' + key + ',' + value, message) then begin
     Request('SBQ,1,SETTINGS');
-    Done(true, caption + ': ' + SettingText(key, value) + ' from the next power-on');
+    Done(true, caption + ': ' + SettingText(key, value) + ' at next boot');  { Short: the frame's edge }
   end
   else Done(false, message);
 end;
