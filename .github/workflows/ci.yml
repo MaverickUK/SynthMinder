@@ -22,7 +22,7 @@ jobs:
     name: Check version and scripts
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Check VERSION.INC and CHANGELOG.md
         run: scripts/check-version.sh
       - name: Shellcheck
@@ -32,7 +32,7 @@ jobs:
     name: Unit tests (Free Pascal, Linux)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install Free Pascal
         run: sudo apt-get update -qq && sudo apt-get install -y -qq fpc
       - name: Build tests
@@ -54,7 +54,7 @@ jobs:
     name: Build for DOS (Free Pascal i8086-msdos)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install build tools
         # nasm assembles the msdos RTL's startup code
@@ -62,7 +62,7 @@ jobs:
 
       - name: Cache i8086-msdos cross compiler
         id: cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/fpc-msdos
           key: fpc-${{ env.FPC_VERSION }}-i8086-msdos-large-v1
@@ -91,7 +91,7 @@ jobs:
           build tests/TESTS.PAS build/dos/TESTS.EXE
           ls -l build/dos/*.EXE
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: synmind-dos
           path: |
@@ -103,9 +103,9 @@ jobs:
     needs: dos-build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: synmind-dos
           path: build/dos
@@ -144,8 +144,8 @@ jobs:
     needs: [version, unit-tests, dos-smoke]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: synmind-dos
           path: build/dos
@@ -155,7 +155,7 @@ jobs:
           mkdir -p dist/SynthMinder
           cp build/dos/SYNMIND.EXE LICENSE dist/SynthMinder/
           (cd dist && zip -r "SynthMinder-${version}.zip" SynthMinder)
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: synthminder-package
           path: dist/*.zip
