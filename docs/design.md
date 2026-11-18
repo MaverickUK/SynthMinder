@@ -68,7 +68,7 @@ The FDD Synth Duo: its disks and its sound
 - **Enter** puts the disk in at once: a floppy is removable, so unlike the Bay's hard disk there's no waiting for the next boot. With two drives it asks which, and `A` or `B` pick one straight away. Swapping the disk SynthMinder itself runs from asks first. `E` takes a disk out; Enter on a pack plays it; `+` `-` set the Duo's volume.
 - **Each change takes a second or so:** the request goes through the disk, and SynthMinder waits for the swap, then asks again. Before the swap DOS writes out its buffers; after it, DOS is told to read the disk afresh.
 - **Looking for the Duo** takes a second or two, so with a Bay SynthMinder looks only when the Floppy tab is first opened. With no Bay it looks at start, and opens on the Floppy tab.
-- **Ejecting the mailbox's drive** (one drive, or two with the other empty) leaves SynthMinder no way to the Duo until a disk is in: it says so, and R looks again.
+- **With the drive empty** the Duo still answers at cylinder 82 (FDD Synth Duo 0.25.0-dev.2), so ejecting the disk SynthMinder talks through doesn't cut it off. If the BIOS says the drive isn't ready, SynthMinder seeks to 82 itself and tries once more.
 - The Settings tab gains the Duo's drives and the disk each starts with, from the next power-on.
 
 ## Without a Bay

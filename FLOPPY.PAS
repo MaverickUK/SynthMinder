@@ -163,20 +163,43 @@ begin
   else BiosOnce := regs.AH;
 end;
 
+{ The head to the mailbox cylinder (INT 13h, AH=0Ch) }
+procedure SeekMailbox(drive:byte);
+var
+  regs:Registers;
+begin
+  regs.AH := $0C;
+  regs.CH := Cylinder;
+  regs.CL := 1;
+  regs.DH := 0;
+  regs.DL := drive;
+  Intr($13, regs);
+end;
+
 { With the BIOS's usual retries: three tries, a reset between them (a
   motor still spinning up fails the first). A disk change is noted and
-  tried again; a drive that isn't ready isn't tried again (each try
-  waits seconds) }
+  tried again. A drive that isn't ready is tried once more with the head
+  at cylinder 82 first: a Duo with no disk in answers only there, and a
+  BIOS may look at the disk change line before it seeks. Each not-ready
+  waits seconds, so no more than that }
 function Bios(fn:byte; drive:byte; sector, count:byte):byte;
 var
   tries:integer;
   status:byte;
+  sought:boolean;
 begin
   tries := 0;
+  sought := false;
   repeat
     inc(tries);
     status := BiosOnce(fn, drive, sector, count);
     if ( status = BsChanged ) and ( drive < MaxFloppies ) then changed[drive] := true;
+    if ( status = BsTimeout ) and not sought then begin
+      sought := true;
+      SeekMailbox(drive);
+      status := BiosOnce(fn, drive, sector, count);
+      if ( status = BsChanged ) and ( drive < MaxFloppies ) then changed[drive] := true;
+    end;
     if ( status = 0 ) or ( status = BsTimeout ) or ( status = BsBadCommand ) then begin
       Bios := status;
       exit;

@@ -1580,8 +1580,7 @@ procedure EjectFloppy;
 var
   code,k:integer;
   letter:char;
-  letters,disk,message,line2:string;
-  mailbox:boolean;
+  letters,disk,message:string;
 begin
   if not Duo.Present then exit;
   letter := ' ';
@@ -1601,24 +1600,14 @@ begin
     letter := choiceValue[k][1];
   end;
   disk := DuoDisk(letter);
-  { The mailbox needs a disk: with nothing in its drive SynthMinder can't reach the Duo }
-  mailbox := ( DuoBackend = dbFloppy ) and ( letter = DriveLetter(DuoDrive) )
-             and not ( TwoDuoDrives and ( length(DuoDisk(chr(ord('A') + ord('B') - ord(letter)))) > 0 ) );
-  if mailbox then line2 := 'SynthMinder talks to the Duo through it: not after.' else line2 := '';
-  if not Confirm('Eject', 'Take ' + DuoDiskText(disk) + ' out of ' + letter + ':?', line2, 'Eject') then exit;
+  { The Duo's mailbox still answers with the drive empty (at cylinder 82 only) }
+  if not Confirm('Eject', 'Take ' + DuoDiskText(disk) + ' out of ' + letter + ':?', '', 'Eject') then exit;
   if ( DuoBackend = dbFloppy ) then FlushDos;
   if not Command('FDC,1,EJECT,' + letter, message) then begin
     Done(false, message);
     exit;
   end;
-  if mailbox then begin
-    ProbeResult[DuoDrive] := FxNoDisk;
-    DuoBackend := dbNone;
-    DuoLooked := false;
-    ClearDuo;
-    Done(true, letter + ': is empty: R looks for the Duo again');
-  end
-  else if AwaitSwap(letter, '') then Done(true, letter + ': is empty')
+  if AwaitSwap(letter, '') then Done(true, letter + ': is empty')
   else Done(true, 'Taking ' + DuoDiskText(disk) + ' out of ' + letter + ':');
 end;
 

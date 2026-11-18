@@ -58,8 +58,8 @@ Built on 18 Nov 2026 in SynthMinder branch `fdd-duo` (PR MaverickUK/SynthMinder#
 - [ ] `SYNMIND.EXE` built by CI, and the Floppy tab looked at in DOSBox-X (`/DEMO`, `/DUMP=FLOPPY`)
 - [ ] **On a PC with the Duo** (the Evesham): found on A:, an exchange's time, a disk swapped and DOS reading the new one (`DIR A:` straight after), two drives, a write-protected disk, SMARTDRV loaded. The firmware has never run on hardware yet
 - [ ] BIOSes that check the cylinder against their drive table and refuse 82: program the controller directly (ports 3F0h-3F7h, DMA channel 2)
-- [ ] The mailbox with no disk in (the controller sees no index): today ejecting the mailbox's drive leaves SynthMinder without the Duo until a disk is in
-- [ ] Whether the synth should play the seek out to cylinder 82 and back on every exchange
+- [x] The mailbox with no disk in: at cylinder 82 an empty Duo answers as if a disk were in, and SynthMinder seeks there itself when the BIOS says not ready (Duo 0.25.0-dev.2; to try on a PC: does the BIOS look at the change line before it seeks?)
+- [x] The seek's sound: the trip back from cylinder 82 is silent (Duo 0.25.0-dev.2); the trip out is heard, since it's like any other seek until it ends
 - [ ] A GameMinder floppy per game (`SYNMIND /FDA=`), as with CDs
 
 ## Later
