@@ -45,7 +45,7 @@ Built in HDD Synth 0.25.0 (branch `synthminder-link`, PR MaverickUK/HDDSynth_Nat
 1. Flash the synth from `synthminder-link` and time `$HDQ,1,PACKS` (it should answer in milliseconds).
 2. The early-answers fix for slow exchanges (0.2.0 above), measured on hardware; then core 1's layout benchmarked and recorded.
 3. The rest of the Bay and Synth tabs tried on the Evesham: CD change, next power-on's disk, balance, pack.
-4. Merge in order: HDDSynth_Native `synthminder-link` (tag v0.25.0), HDDSynthPro `synthminder` (0.36.0), SynthMinder `firmware-protocol` (0.2.0/0.3.0).
+4. Merge HDDSynth_Native `synthminder-link` (tag v0.25.0), then HDDSynthPro `synthminder` (0.36.0). SynthMinder's `firmware-protocol` was merged into `main` on 18 Nov 2026.
 
 The test disk is `SYNTHMIN.IMG` on the Bay's card (FreeDOS, `SYNMIND.EXE` from this branch's CI build, `HDDBENCH`), built by HDDSynthPro's `tools/bench-image/build_image.py` with `SYNMIND.EXE` and a plain `AUTOEXEC.BAT` added by mtools. The card's `device0` points at it; `WIN98.IMG` is the owner's usual disk.
 
