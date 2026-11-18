@@ -1,6 +1,7 @@
 Program SynMind;
 {-----------------------------
-SynthMinder: see and change the HDD Synth and IDE Synth Bay from DOS
+SynthMinder: see and change the HDD Synth, IDE Synth Bay and FDD
+Synth Duo from DOS
 
   SYNMIND           find the Bay and open SynthMinder
   SYNMIND /DEMO     a pretend Bay and synth, to try it out
@@ -10,10 +11,13 @@ SynthMinder: see and change the HDD Synth and IDE Synth Bay from DOS
 and for batch files (OPTIONS.PAS):
 
   SYNMIND /DISC=QUAKE.ISO /PACK=3 /VOL=60 /BAL=50 /Q
+  SYNMIND /FDA=GAMES.IMG /FDVOL=60 /Q
 
 The Bay is found on the IDE bus and answers through its own
 command (docs/protocol.md); it passes the synth's sentences on
-over the Synth Link.
+over the Synth Link. The FDD Synth Duo is found on the floppy
+drives and answers through its mailbox at cylinder 82
+(FLOPPY.PAS).
 ------------------------------}
 uses
     FpuFix, { First: see FPUFIX.PAS }
@@ -22,6 +26,7 @@ uses
     Sentence,
     Model,
     Ide,
+    Floppy,
     Link,
     Options,
     Screen;
@@ -33,21 +38,25 @@ const
 
   MenuSynth = 0;
   MenuBay = 1;
-  MenuSettings = 2;
-  MenuRefresh = 3;
-  MenuExit = 4;
-  MenuCount = 5;
-  MenuCaptions: array[0..MenuCount - 1] of string[8] = ('Synth', 'Bay', 'Settings', 'Refresh', 'Exit');
+  MenuFloppy = 2;
+  MenuSettings = 3;
+  MenuRefresh = 4;
+  MenuExit = 5;
+  MenuCount = 6;
+  MenuCaptions: array[0..MenuCount - 1] of string[8] = ('Synth', 'Bay', 'Floppy', 'Settings', 'Refresh', 'Exit');
   MenuHints: array[0..MenuCount - 1] of string[78] = (
     'The HDD Synth: its sample pack, volume and balance',
     'The Bay''s SD card: change the CD, or the hard disk for the next power-on',
-    'The Bay''s settings: changes take effect from the next power-on',
-    'Ask the Bay and the synth again',
+    'The FDD Synth Duo: its disks and its sound',
+    'The Bay''s and the Duo''s settings: changes take effect from the next power-on',
+    'Ask the Bay, the synth and the Duo again',
     'Exit to DOS');
 
   { The Settings tab's rows: a heading (no key), or a setting the Bay lists
-    with $SBQ,1,SETTINGS }
-  SettingRowCount = 10;
+    with $SBQ,1,SETTINGS, or (fd:) the Duo with $FDQ,1,SETTINGS. The Bay's
+    show when it lists settings, the Duo's when it does }
+  SettingRowCount = 14;
+  DuoFirstRow = 11;
   SettingRows: array[1..SettingRowCount] of record
     Key: string[13];
     Caption: string[16];
@@ -61,7 +70,11 @@ const
     (Key:''; Caption:'Speed and safety'),
     (Key:'write_behind'; Caption:'Write-behind'),
     (Key:'read_ahead'; Caption:'Read-ahead'),
-    (Key:'sd_high_speed'; Caption:'SD card speed'));
+    (Key:'sd_high_speed'; Caption:'SD card speed'),
+    (Key:''; Caption:'FDD Synth Duo'),
+    (Key:'fd:drive'; Caption:'Drives'),
+    (Key:'fd:device0'; Caption:'Start disk A:'),
+    (Key:'fd:device1'; Caption:'Start disk B:'));
   ChChanged = #249;  { A setting whose next value differs from now }
 
   { The seek timings, for the chooser }
@@ -75,23 +88,34 @@ const
     'a 1997 drive, 5400 rpm',
     'a 2005 drive, 7200 rpm, 2 MB cache');
 
-  MaxChoices = MaxFiles + 2;
+  MaxChoices = MaxDuoFiles + 2;
 
   { Rows of the Bay's list that aren't files }
   RowHardDisks = -1;
   RowCdRoms = -2;
 
+  { Rows of the Floppy tab's list that aren't images: headings, and the
+    packs (RowFirstPack - index) }
+  Row35 = -1;
+  Row525 = -2;
+  RowOther = -3;
+  RowPacks = -4;
+  RowFirstPack = -10;
+
 var
   menuIndex:integer;
   tab:integer;              { MenuSynth, MenuBay or MenuSettings: what the panels show }
   setSel:integer;           { The Settings tab's row, 1..SettingRowCount, never a heading }
-  choiceValue:array[1..MaxChoices] of string[12];  { The chooser's choices }
+  choiceValue:array[1..MaxChoices] of string[47];  { The chooser's choices }
   choiceWords:array[1..MaxChoices] of string[40];
   choiceCount:integer;
   packSel,packTop:integer;
   bayRows:array[0..MaxFiles + 1] of integer; { File index, or RowHardDisks/RowCdRoms }
   bayRowCount:integer;
   baySel,bayTop:integer;
+  fdRows:array[0..MaxDuoFiles + MaxDuoPacks + 3] of integer; { Image index, a heading, or a pack }
+  fdRowCount:integer;
+  fdSel,fdTop:integer;
   note:string;              { The result of the last change, in the bottom of the frame }
   noteGood:boolean;
   quit:boolean;
@@ -491,18 +515,414 @@ begin
   ClearRight(y);
 end;
 
+{ ////////////////// Floppy tab ////////////////// }
+
+{ As floppies are sized: 1.44 MB, 1.2 MB, 720 KB }
+function FloppySize(kb:longint):string;
+var
+  s:string;
+begin
+  if ( kb < 1000 ) then begin
+    FloppySize := IntToStr(kb) + ' KB';
+    exit;
+  end;
+  s := IntToStr(( kb mod 1000 ) div 10);
+  if ( length(s) < 2 ) then s := '0' + s;
+  if ( s[2] = '0' ) then s[0] := #1;
+  FloppySize := IntToStr(kb div 1000) + '.' + s + ' MB';
+end;
+
+{ e.g. 0.4 s }
+function SecondsText(ms:longint):string;
+begin
+  SecondsText := IntToStr(ms div 1000) + '.' + IntToStr(( ms mod 1000 ) div 100) + ' s';
+end;
+
+function UpperText(s:string):string;
+var
+  i:integer;
+begin
+  for i := 1 to length(s) do s[i] := UpCase(s[i]);
+  UpperText := s;
+end;
+
+{ The Duo's drive letters: 'A', 'AB' or 'B' }
+function DuoLetters:string;
+begin
+  DuoLetters := DuoValue('drives');
+end;
+
+function TwoDuoDrives:boolean;
+begin
+  TwoDuoDrives := length(DuoLetters) >= 2;
+end;
+
+{ The image in drive `letter`, '' if none }
+function DuoDisk(letter:char):string;
+var
+  disk:string;
+begin
+  disk := DuoValue(chr(ord(UpCase(letter)) + 32) + '_disk');
+  if ( disk = '-' ) then disk := '';
+  DuoDisk := disk;
+end;
+
+function DuoDiskText(disk:string):string;
+begin
+  if ( length(disk) = 0 ) then DuoDiskText := 'none'
+  else if ( disk = 'welcome' ) then DuoDiskText := 'the welcome disk'
+  else if ( disk = 'generated' ) then DuoDiskText := 'the test disk'
+  else DuoDiskText := disk;
+end;
+
+{ The drive an image is in, or ' ' }
+function DriveOfImage(i:integer):char;
+var
+  k:integer;
+  letters:string;
+begin
+  DriveOfImage := ' ';
+  letters := DuoLetters;
+  for k := 1 to length(letters) do
+    if ( UpperText(DuoDisk(letters[k])) = UpperText(Duo.Files[i].Name) ) then DriveOfImage := letters[k];
+end;
+
+function DuoVolume:integer;
+var
+  v:longint;
+begin
+  if FieldToInt(DuoValue('volume'), v) then DuoVolume := v else DuoVolume := 0;
+end;
+
+function DuoPackIndex:integer;
+var
+  v:longint;
+begin
+  if FieldToInt(DuoValue('pack_index'), v) then DuoPackIndex := v else DuoPackIndex := -1;
+end;
+
+{ The heading an image goes under: by its kind and size }
+function DuoGroup(i:integer):integer;
+begin
+  with Duo.Files[i] do
+    if ( Kind = DuoFlux ) then DuoGroup := Row35
+    else if ( Kind <> DuoImage ) then DuoGroup := RowOther
+    else if ( SizeKB = 160 ) or ( SizeKB = 180 ) or ( SizeKB = 320 ) or ( SizeKB = 360 ) or ( SizeKB = 1200 ) then
+      DuoGroup := Row525
+    else if ( SizeKB = 720 ) or ( SizeKB = 1440 ) or ( SizeKB = 1680 ) or ( SizeKB = 1722 ) or ( SizeKB = 2880 ) then
+      DuoGroup := Row35
+    else DuoGroup := RowOther;
+end;
+
+function IsFdHeading(code:integer):boolean;
+begin
+  IsFdHeading := ( code < 0 ) and ( code > RowFirstPack );
+end;
+
+procedure BuildFdRows;
+const
+  Groups: array[1..3] of integer = (Row35, Row525, RowOther);
+var
+  g,i:integer;
+  any:boolean;
+begin
+  fdRowCount := 0;
+  for g := 1 to 3 do begin
+    any := false;
+    for i := 0 to Duo.FileCount - 1 do
+      if ( DuoGroup(i) = Groups[g] ) then begin
+        if not any then begin
+          fdRows[fdRowCount] := Groups[g];
+          inc(fdRowCount);
+          any := true;
+        end;
+        fdRows[fdRowCount] := i;
+        inc(fdRowCount);
+      end;
+  end;
+  if ( Duo.PackCount > 0 ) then begin
+    fdRows[fdRowCount] := RowPacks;
+    inc(fdRowCount);
+    for i := 0 to Duo.PackCount - 1 do begin
+      fdRows[fdRowCount] := RowFirstPack - i;
+      inc(fdRowCount);
+    end;
+  end;
+end;
+
+function FdListRows:integer;
+begin
+  FdListRows := FrameBottom - 2 - PanelTop;
+end;
+
+procedure MoveFdSel(step:integer);
+var
+  next:integer;
+begin
+  if ( fdRowCount = 0 ) then exit;
+  next := fdSel;
+  repeat
+    next := next + step;
+    if ( next < 0 ) or ( next >= fdRowCount ) then exit;
+  until not IsFdHeading(fdRows[next]);
+  fdSel := next;
+end;
+
+procedure KeepFdVisible;
+begin
+  if ( fdSel >= fdRowCount ) then fdSel := fdRowCount - 1;
+  if ( fdSel < 0 ) then fdSel := 0;
+  if ( fdRowCount > 0 ) and IsFdHeading(fdRows[fdSel]) then MoveFdSel(1);
+  if ( fdSel < fdTop ) then fdTop := fdSel;
+  if ( fdTop > 0 ) and IsFdHeading(fdRows[fdTop - 1]) and ( fdSel = fdTop ) then dec(fdTop);
+  if ( fdSel >= fdTop + FdListRows ) then fdTop := fdSel - FdListRows + 1;
+  if ( fdTop < 0 ) then fdTop := 0;
+end;
+
+{ The highlighted row: an image (>= 0), a pack (<= RowFirstPack), or a heading }
+function FdSelected:integer;
+begin
+  FdSelected := Row35;
+  if ( fdSel >= 0 ) and ( fdSel < fdRowCount ) then FdSelected := fdRows[fdSel];
+end;
+
+procedure DrawFloppyLeft;
+var
+  y,fore:byte;
+  row,code,i,count:integer;
+  text,right,heading:string;
+  inUse:boolean;
+  letters:string;
+begin
+  y := PanelTop;
+  if not Duo.Present then begin
+    LeftLine(y, 'Disks', ColorHeadingText, ColorHeadingBack);
+    LeftLine(y + 1, '', ColorText, ColorBackground);
+    LeftLine(y + 2, 'Nothing to list: no Duo answered', ColorDim, ColorBackground);
+    ClearLeft(y + 3, FrameBottom - 1);
+    exit;
+  end;
+  BuildFdRows;
+  KeepFdVisible;
+  for row := fdTop to fdTop + FdListRows - 1 do begin
+    if ( row >= fdRowCount ) then
+      LeftLine(y, '', ColorText, ColorBackground)
+    else begin
+      code := fdRows[row];
+      if IsFdHeading(code) then begin
+        count := 0;
+        case code of
+          Row35: heading := '3.5in disks';
+          Row525: heading := '5.25in disks';
+          RowOther: heading := 'Other disks';
+        else
+          heading := 'Sound packs';
+        end;
+        if ( code = RowPacks ) then count := Duo.PackCount
+        else for i := 0 to Duo.FileCount - 1 do if ( DuoGroup(i) = code ) then inc(count);
+        LeftRow(y, heading, IntToStr(count), ColorHeadingText, ColorHeadingBack);
+      end
+      else begin
+        if ( code <= RowFirstPack ) then begin
+          i := RowFirstPack - code;
+          inUse := i = DuoPackIndex;
+          if inUse then text := ChPlaying + '  ' + Duo.Packs[i] else text := '   ' + Duo.Packs[i];
+          right := '';
+        end
+        else begin
+          inUse := DriveOfImage(code) <> ' ';
+          text := DriveOfImage(code) + '  ' + copy(Duo.Files[code].Name, 1, 25);
+          if ( Duo.Files[code].Kind = DuoFlux ) then right := 'flux' else right := FloppySize(Duo.Files[code].SizeKB);
+        end;
+        if ( row = fdSel ) and ( tab = menuIndex ) then
+          LeftRow(y, text, right, ColorHighlightText, ColorHighlightBack)
+        else begin
+          if inUse then fore := ColorHighlightText else fore := ColorText;
+          LeftRow(y, text, right, fore, ColorBackground);
+        end;
+      end;
+    end;
+    inc(y);
+  end;
+  ClearLeft(y, FrameBottom - 2);
+  letters := DuoLetters;
+  if TwoDuoDrives then text := 'A/B in drive A:/B:'
+  else if ( length(letters) = 1 ) then text := letters + ' in drive ' + letters + ':'
+  else text := '';
+  LeftLine(FrameBottom - 1, text + '   ' + ChPlaying + ' playing now', ColorNote, ColorBackground);
+end;
+
+procedure RightNote(var y:byte; text:string);
+begin
+  if ( y >= FrameBottom ) then exit;
+  RightLine(y, text, ColorNote, ColorBackground);
+  inc(y);
+end;
+
+{ Why there's no Duo: what was found on each drive }
+procedure NoDuoFields(var y:byte);
+var
+  d:integer;
+  l:string;
+begin
+  RightLine(y, 'Not found', ColorBad, ColorBackground);
+  inc(y);
+  RightGap(y);
+  if not DuoLooked then begin
+    RightNote(y, 'Not looked for yet: R looks on the');
+    RightNote(y, 'floppy drives (a second or two)');
+    exit;
+  end;
+  RightLine(y, 'Looked for its mailbox at cylinder 82:', ColorText, ColorBackground);
+  inc(y);
+  for d := 0 to MaxFloppies - 1 do begin
+    l := DriveLetter(d) + ':';
+    case ProbeResult[d] of
+      -1: RightField(y, ' ' + l, 'not set up in the BIOS');
+      FxNoDisk: RightField(y, ' ' + l, 'not ready: no disk in?');
+      FxRefused: RightField(y, ' ' + l, 'the BIOS refused cylinder 82');
+    else
+      RightField(y, ' ' + l, 'no answer: a real drive?');
+    end;
+  end;
+  RightGap(y);
+  RightNote(y, 'The Duo answers from its firmware');
+  RightNote(y, '0.25.0 (its USB console''s h says),');
+  RightNote(y, 'with a PC disk in the drive.');
+end;
+
+procedure DuoFields(var y:byte);
+var
+  letters:string;
+begin
+  if not Duo.Present then begin
+    NoDuoFields(y);
+    exit;
+  end;
+  letters := DuoLetters;
+  RightField(y, 'Firmware', DuoValue('firmware'));
+  if TwoDuoDrives then RightField(y, 'Drives', 'A: and B:')
+  else RightField(y, 'Drives', letters + ': (one drive)');
+  RightField(y, 'Mailbox', DuoValue('mailbox') + ':, cylinder 82');
+  if ( DuoBackend = dbFloppy ) and ( ExchangeMs > 0 ) then RightField(y, 'Exchange', SecondsText(ExchangeMs));
+  RightField(y, 'Volume', VolumeBar(DuoVolume));
+  RightField(y, 'Pack', DuoValue('pack'));
+end;
+
+procedure DuoDriveFields(var y:byte; letter:char; full:boolean);
+var
+  k,disk:string;
+begin
+  if ( y + 2 >= FrameBottom ) then exit;
+  RightGap(y);
+  RightHeading(y, 'Drive ' + letter + ':');
+  k := chr(ord(letter) + 32) + '_';
+  disk := DuoDisk(letter);
+  RightField(y, 'Disk', DuoDiskText(disk));
+  if ( length(disk) = 0 ) then exit;
+  RightField(y, 'Format', DuoValue(k + 'format'));
+  if full then RightField(y, 'Head', 'cylinder ' + DuoValue(k + 'cylinder'));
+  RightField(y, 'Motor', DuoValue(k + 'motor'));
+  if full then begin
+    if ( DuoValue(k + 'protect') = 'on' ) then RightField(y, 'Write', 'protected')
+    else RightField(y, 'Write', 'allowed');
+  end;
+end;
+
+procedure DrawFloppyRight;
+var
+  y:byte;
+  code,k:integer;
+  letters:string;
+begin
+  y := PanelTop;
+  RightHeading(y, 'FDD Synth Duo');
+  DuoFields(y);
+  if Duo.Present then begin
+    letters := DuoLetters;
+    for k := 1 to length(letters) do DuoDriveFields(y, letters[k], not TwoDuoDrives);
+    code := FdSelected;
+    if ( code >= 0 ) and ( y + 3 < FrameBottom ) then begin
+      RightGap(y);
+      RightHeading(y, copy(Duo.Files[code].Name, 1, RightWidth - 2));
+      case Duo.Files[code].Kind of
+        DuoFlux: RightField(y, 'Kind', 'a flux image (HFE)');
+        DuoAmiga: RightField(y, 'Kind', 'an Amiga disk');
+      else
+        RightField(y, 'Size', FloppySize(Duo.Files[code].SizeKB));
+      end;
+      if TwoDuoDrives then begin
+        RightNote(y, 'Enter, or A or B, puts it in a drive');
+        RightNote(y, 'now: DOS sees the disk change');
+      end
+      else begin
+        RightNote(y, 'Enter puts it in ' + letters + ': now: DOS sees');
+        RightNote(y, 'the disk change, as with a real drive');
+      end;
+    end
+    else if ( code <= RowFirstPack ) and ( y + 2 < FrameBottom ) then begin
+      RightGap(y);
+      RightNote(y, 'Enter plays this sample pack');
+    end;
+  end;
+  ClearRight(y);
+end;
+
 { ////////////////// Settings tab ////////////////// }
 
 { A setting's value in words }
 function SettingText(key, value:string):string;
 begin
-  if ( key = 'device1' ) and ( value = 'cdrom' ) then SettingText := 'CD-ROM drive'
+  if ( key = 'fd:drive' ) then begin
+    if ( value = 'a_b' ) or ( value = 'a,b' ) then SettingText := 'A: and B:'
+    else if ( value = 'b' ) then SettingText := 'B: only'
+    else if ( value = 'a' ) then SettingText := 'A: only'
+    else SettingText := value;
+  end
+  else if ( ( key = 'fd:device0' ) or ( key = 'fd:device1' ) ) and ( ( value = '-' ) or ( value = '' ) ) then
+    SettingText := 'the last one in'
+  else if ( key = 'device1' ) and ( value = 'cdrom' ) then SettingText := 'CD-ROM drive'
   else if ( key = 'sd_high_speed' ) and ( value = 'on' ) then SettingText := 'high'
   else if ( key = 'sd_high_speed' ) and ( value = 'off' ) then SettingText := 'normal'
   else SettingText := value;
 end;
 
-{ Move the Settings tab's selection by a step, skipping the headings }
+function IsDuoRow(row:integer):boolean;
+begin
+  IsDuoRow := row >= DuoFirstRow;
+end;
+
+{ The Bay's rows show when it lists its settings, the Duo's when it does }
+function RowShown(row:integer):boolean;
+begin
+  if IsDuoRow(row) then RowShown := Duo.SettingCount > 0
+  else RowShown := Bay.SettingCount > 0;
+end;
+
+{ A row's setting as the Bay or the Duo gives it: false if it didn't }
+function RowSetting(row:integer; var next, now:string):boolean;
+var
+  i:integer;
+  key:string;
+begin
+  RowSetting := false;
+  key := SettingRows[row].Key;
+  if IsDuoRow(row) then begin
+    i := DuoSettingIndex(copy(key, 4, 20));
+    if ( i = 0 ) then exit;
+    next := Duo.Settings[i].Next;
+    now := Duo.Settings[i].Now;
+  end
+  else begin
+    i := SettingIndex(key);
+    if ( i = 0 ) then exit;
+    next := Bay.Settings[i].Next;
+    now := Bay.Settings[i].Now;
+  end;
+  RowSetting := true;
+end;
+
+{ Move the Settings tab's selection by a step, skipping headings and rows not shown }
 procedure MoveSetSel(step:integer);
 var
   next:integer;
@@ -511,18 +931,18 @@ begin
   repeat
     next := next + step;
     if ( next < 1 ) or ( next > SettingRowCount ) then exit;
-  until length(SettingRows[next].Key) > 0;
+  until ( length(SettingRows[next].Key) > 0 ) and RowShown(next);
   setSel := next;
 end;
 
 procedure DrawSettingsLeft;
 var
   y,fore,back:byte;
-  row,i:integer;
-  mark,text:string;
+  row:integer;
+  mark,text,next,now:string;
 begin
   y := PanelTop;
-  if ( Bay.SettingCount = 0 ) then begin
+  if ( Bay.SettingCount = 0 ) and ( Duo.SettingCount = 0 ) then begin
     LeftLine(y, 'Settings', ColorHeadingText, ColorHeadingBack);
     LeftLine(y + 1, '', ColorText, ColorBackground);
     LeftLine(y + 2, 'This Bay''s firmware can''t show its', ColorText, ColorBackground);
@@ -531,20 +951,24 @@ begin
     ClearLeft(y + 5, FrameBottom - 1);
     exit;
   end;
-  if ( setSel < 1 ) or ( length(SettingRows[setSel].Key) = 0 ) then begin
-    setSel := 1;
+  if ( setSel < 1 ) or ( setSel > SettingRowCount ) or ( length(SettingRows[setSel].Key) = 0 )
+     or not RowShown(setSel) then begin
+    setSel := 0;
     MoveSetSel(1);
   end;
   for row := 1 to SettingRowCount do begin
-    if ( length(SettingRows[row].Key) = 0 ) then
-      LeftLine(y, SettingRows[row].Caption, ColorHeadingText, ColorHeadingBack)
+    if not RowShown(row) then
+      { not this one's }
+    else if ( length(SettingRows[row].Key) = 0 ) then begin
+      LeftLine(y, SettingRows[row].Caption, ColorHeadingText, ColorHeadingBack);
+      inc(y);
+    end
     else begin
-      i := SettingIndex(SettingRows[row].Key);
       mark := ' ';
       text := '  ' + PadRight(SettingRows[row].Caption, 17);
-      if ( i > 0 ) then begin
-        text := text + SettingText(SettingRows[row].Key, Bay.Settings[i].Next);
-        if ( Bay.Settings[i].Next <> Bay.Settings[i].Now ) then mark := ChChanged;
+      if RowSetting(row, next, now) then begin
+        text := text + SettingText(SettingRows[row].Key, next);
+        if ( next <> now ) then mark := ChChanged;
       end
       else
         text := text + '-';
@@ -555,8 +979,8 @@ begin
         back := ColorHighlightBack;
       end;
       LeftRow(y, text, mark, fore, back);
+      inc(y);
     end;
-    inc(y);
   end;
   ClearLeft(y, FrameBottom - 2);
   LeftLine(FrameBottom - 1, ChChanged + ' changed: from the next power-on', ColorNote, ColorBackground);
@@ -607,6 +1031,19 @@ begin
     Say('Fetch the next sector while the PC');
     Say('reads this one: faster reads.');
   end
+  else if ( key = 'fd:drive' ) then begin
+    Say('The FDD Synth Duo answers as drive A:,');
+    Say('or as A: and B: with a disk in each.');
+    Say('For B:, the PC''s BIOS setup must have');
+    Say('a drive B: (3.5in, 1.44 MB), and each');
+    Say('image can be up to 3 MB (4.5 MB alone).');
+  end
+  else if ( key = 'fd:device0' ) or ( key = 'fd:device1' ) then begin
+    Say('The disk in the drive when the Duo');
+    Say('starts, every time. The last one in:');
+    Say('it starts with the disk it had when');
+    Say('it was switched off, as a GoTek does.');
+  end
   else if ( key = 'sd_high_speed' ) then begin
     Say('Read the SD card at 40 MHz instead of');
     Say('20 (the PCB). The Bay checks the card');
@@ -618,28 +1055,43 @@ end;
 procedure DrawSettingsRight;
 var
   y:byte;
-  i:integer;
-  key:string;
+  key,next,now:string;
+  duoRow:boolean;
 begin
   y := PanelTop;
-  if ( Bay.SettingCount > 0 ) and ( setSel >= 1 ) and ( setSel <= SettingRowCount ) then begin
+  duoRow := false;
+  if ( setSel >= 1 ) and ( setSel <= SettingRowCount ) and RowShown(setSel)
+     and ( length(SettingRows[setSel].Key) > 0 ) then begin
     key := SettingRows[setSel].Key;
-    RightHeading(y, SettingRows[setSel].Caption);
+    duoRow := IsDuoRow(setSel);
+    if duoRow then RightHeading(y, SettingRows[setSel].Caption + ' (FDD Synth Duo)')
+    else RightHeading(y, SettingRows[setSel].Caption);
     RightGap(y);
     SettingWords(y, key);
     RightGap(y);
-    i := SettingIndex(key);
-    if ( i > 0 ) then begin
-      RightField(y, 'Now', SettingText(key, Bay.Settings[i].Now));
-      RightField(y, 'Next start', SettingText(key, Bay.Settings[i].Next));
+    if RowSetting(setSel, next, now) then begin
+      RightField(y, 'Now', SettingText(key, now));
+      RightField(y, 'Next start', SettingText(key, next));
     end;
     RightGap(y);
-    RightLine(y, 'Enter changes it, from the next', ColorNote, ColorBackground); inc(y);
-    RightLine(y, 'power-on: the PC runs from the Bay.', ColorNote, ColorBackground); inc(y);
+    if duoRow then begin
+      RightNote(y, 'Enter changes it: the Duo reads it when');
+      RightNote(y, 'it starts, the next time the PC is on.');
+    end
+    else begin
+      RightNote(y, 'Enter changes it, from the next');
+      RightNote(y, 'power-on: the PC runs from the Bay.');
+    end;
     RightGap(y);
   end;
-  RightHeading(y, 'IDE Synth Bay');
-  BayFields(y);
+  if duoRow then begin
+    RightHeading(y, 'FDD Synth Duo');
+    DuoFields(y);
+  end
+  else begin
+    RightHeading(y, 'IDE Synth Bay');
+    BayFields(y);
+  end;
   ClearRight(y);
 end;
 
@@ -676,6 +1128,12 @@ begin
     DrawFooter(' [F1] Help  [Enter] Play pack  [+/-] Volume  [</>] Balance  [R] Refresh  [Esc] Exit')
   else if ( tab = MenuSettings ) then
     DrawFooter(' [F1] Help  [Enter] Change  [R] Refresh  [Esc] Exit')
+  else if ( tab = MenuFloppy ) and not Duo.Present then
+    DrawFooter(' [F1] Help  [R] Look again  [Esc] Exit')
+  else if ( tab = MenuFloppy ) and TwoDuoDrives then
+    DrawFooter(' [F1] Help  [Enter] Insert  [A]/[B] Into A:/B:  [E] Eject  [+/-] Volume  [Esc] Exit')
+  else if ( tab = MenuFloppy ) then
+    DrawFooter(' [F1] Help  [Enter] Insert  [E] Eject  [+/-] Volume  [R] Refresh  [Esc] Exit')
   else
     DrawFooter(' [F1] Help  [Enter] Insert/Boot  [E] Eject disc  [R] Refresh  [Esc] Exit');
 end;
@@ -695,12 +1153,23 @@ begin
     DrawSettingsLeft;
     DrawSettingsRight;
   end
+  else if ( tab = MenuFloppy ) then begin
+    DrawFloppyLeft;
+    DrawFloppyRight;
+  end
   else begin
     DrawBayLeft;
     DrawBayRight;
   end;
 
-  if ( Backend = bkDemo ) then where := 'Demo: a pretend Bay and synth'
+  if ( tab = MenuFloppy ) then begin
+    if ( DuoBackend = dbDemo ) then where := 'Demo: a pretend Duo on A: and B:'
+    else if ( DuoBackend = dbFloppy ) and TwoDuoDrives then where := 'Duo on drives A: and B: (cylinder 82)'
+    else if ( DuoBackend = dbFloppy ) then where := 'Duo on drive ' + DriveLetter(DuoDrive) + ': (cylinder 82)'
+    else where := 'No Duo on A: or B:';
+  end
+  else if ( Backend = bkDemo ) then where := 'Demo: a pretend Bay and synth'
+  else if ( Backend = bkNone ) then where := 'No IDE Synth Bay found'
   else where := 'Bay on the ' + DriveName(BayDrive);
   FrameNote(4, where);
   if ( length(note) > 0 ) then begin
@@ -759,24 +1228,26 @@ end;
 procedure Help;
 const
   Width = 64;
-  Lines = 16;
+  Lines = 18;
   HelpText: array[1..Lines] of string[60] = (
-    'Left/Right  the menu: Synth, Bay, Settings, Refresh, Exit',
+    'Left/Right  the menu: Synth, Bay, Floppy, Settings...',
     'Up/Down     move through the list',
     'Enter       on Synth: play the highlighted pack',
     '            on Bay: put a CD image in the CD-ROM drive, or',
     '            make a disk image the hard disk at next power-on',
+    '            on Floppy: put the disk in the Duo''s drive now,',
+    '            or play its sample pack',
     '            on Settings: change the highlighted setting',
-    '+ -         synth volume up or down',
-    '< >         synth balance left or right',
-    'E           take the disc out of the CD-ROM drive',
-    'R           ask the Bay and the synth again',
+    'A B         on Floppy: put the disk in A: or B:',
+    '+ -         volume (on Floppy: the Duo''s); < > balance',
+    'E           take out the CD (on Floppy: the floppy)',
+    'R           ask the Bay, the synth and the Duo again',
     'Esc         exit to DOS',
     '',
-    'The synth keeps volume, balance and pack, as if you had',
-    'turned its knob. The Bay''s hard disk can''t change while',
-    'DOS runs from it, so a new one waits for the next power-on.',
-    '');
+    'The Bay''s hard disk can''t change while DOS runs from it,',
+    'so a new one waits for the next power-on. A floppy changes',
+    'at once; each change to the Duo takes a second or so, as',
+    'it goes through the disk (cylinder 82, past the end).');
 var
   x1,y1:byte;
   i:integer;
@@ -952,6 +1423,243 @@ begin
   RefreshBay;
 end;
 
+{ ////////////////// The Duo's changes ////////////////// }
+
+{ Waits `ticks` of the BIOS's clock, 18.2 a second }
+procedure WaitTicks(ticks:longint);
+var
+  start:longint;
+begin
+  start := MemL[$40:$6C];
+  repeat until ( MemL[$40:$6C] - start >= ticks ) or ( MemL[$40:$6C] < start );
+end;
+
+{ The drive SynthMinder runs from, if it's a floppy: 'A', 'B', or ' ' }
+function RunDrive:char;
+var
+  path:string;
+begin
+  path := ParamStr(0);
+  RunDrive := ' ';
+  if ( length(path) > 1 ) and ( path[2] = ':' ) and ( UpCase(path[1]) in ['A', 'B'] ) then RunDrive := UpCase(path[1]);
+end;
+
+{ After an insert or eject: the disk is out for half a second, then goes in
+  once the Duo has it in memory. Waits for that and asks again: true once
+  `letter` holds `name` ('' for none). DOS is then told the disk changed }
+function AwaitSwap(letter:char; name:string):boolean;
+var
+  tries:integer;
+  other:char;
+begin
+  AwaitSwap := false;
+  { With two drives, talk through the other while this one swaps }
+  if ( DuoBackend = dbFloppy ) and TwoDuoDrives and ( letter = DriveLetter(DuoDrive) ) then begin
+    if ( letter = 'A' ) then other := 'B' else other := 'A';
+    if ( length(DuoDisk(other)) > 0 ) then DuoDrive := ord(other) - ord('A');
+  end;
+  for tries := 1 to 4 do begin
+    if ( DuoBackend = dbFloppy ) then WaitTicks(18);
+    RefreshDuo;
+    if Duo.Present and ( UpperText(DuoDisk(letter)) = UpperText(name) ) then begin
+      AwaitSwap := true;
+      if ( DuoBackend = dbFloppy ) and ( length(name) > 0 ) then TellDos(ord(letter) - ord('A'));
+      exit;
+    end;
+  end;
+end;
+
+{ A drive for an image: the only one, or the one chosen. ' ' for Esc }
+function ChooseDrive(title:string):char;
+var
+  letters,disk:string;
+  k,pick:integer;
+begin
+  letters := DuoLetters;
+  ChooseDrive := ' ';
+  if ( length(letters) = 0 ) then exit;
+  if ( length(letters) = 1 ) then begin
+    ChooseDrive := letters[1];
+    exit;
+  end;
+  choiceCount := 0;
+  for k := 1 to length(letters) do begin
+    disk := DuoDisk(letters[k]);
+    if ( length(disk) = 0 ) then AddChoice(letters[k] + ':', 'empty')
+    else AddChoice(letters[k] + ':', DuoDiskText(disk) + ' comes out');
+  end;
+  pick := Choose(title, 1);
+  if ( pick > 0 ) then ChooseDrive := choiceValue[pick][1];
+end;
+
+procedure InsertFloppy(i:integer; letter:char);
+var
+  name,message,inThere:string;
+begin
+  name := Duo.Files[i].Name;
+  if ( pos(letter, DuoLetters) = 0 ) then begin
+    Done(false, 'The Duo has no drive ' + letter + ':');
+    exit;
+  end;
+  inThere := DuoDisk(letter);
+  if ( UpperText(inThere) = UpperText(name) ) then begin
+    Done(true, name + ' is in ' + letter + ': already');
+    exit;
+  end;
+  if ( RunDrive = letter ) and ( length(inThere) > 0 ) then
+    if not Confirm('Swap the disk in ' + letter + ':?', 'SynthMinder is running from ' + letter + ': ('
+                   + DuoDiskText(inThere) + '). DOS may', 'not find the rest. Put ' + name + ' in anyway?',
+                   'Swap') then exit;
+  if ( DuoBackend = dbFloppy ) then FlushDos;  { Anything DOS holds for the old disk, onto it }
+  if not Command('FDC,1,INSERT,' + letter + ',' + name, message) then begin
+    Done(false, message);
+    exit;
+  end;
+  if AwaitSwap(letter, name) then begin
+    if ( DuoBackend = dbFloppy ) then Done(true, 'Put ' + name + ' in ' + letter + ': (' + SecondsText(ExchangeMs) + ')')
+    else Done(true, 'Put ' + name + ' in ' + letter + ':');
+  end
+  else Done(true, name + ' is going into ' + letter + ': (R to see)');
+end;
+
+procedure FloppyInto(letter:char);
+var
+  code:integer;
+begin
+  if not Duo.Present then exit;
+  code := FdSelected;
+  if ( code >= 0 ) then InsertFloppy(code, letter);
+end;
+
+procedure PlayDuoPack(i:integer);
+var
+  message:string;
+begin
+  if ( i = DuoPackIndex ) then begin
+    Done(true, 'Already playing');
+    exit;
+  end;
+  if Command('FDC,1,PACK,' + IntToStr(i), message) then begin
+    ApplyReply(MakeSentence('FDV,1,pack_index,' + IntToStr(i)));
+    ApplyReply(MakeSentence('FDV,1,pack,' + Duo.Packs[i]));
+    Done(true, 'The Duo plays ' + Duo.Packs[i]);
+  end
+  else Done(false, message);
+end;
+
+procedure FloppyEnter;
+var
+  code:integer;
+  letter:char;
+begin
+  if not Duo.Present then exit;
+  code := FdSelected;
+  if ( code <= RowFirstPack ) then PlayDuoPack(RowFirstPack - code)
+  else if ( code >= 0 ) then begin
+    letter := ChooseDrive('Insert ' + copy(Duo.Files[code].Name, 1, 30));
+    if ( letter <> ' ' ) then InsertFloppy(code, letter);
+  end;
+end;
+
+procedure SetDuoVolume(volume:integer);
+var
+  message:string;
+begin
+  if not Duo.Present then exit;
+  if ( volume < 0 ) then volume := 0;
+  if ( volume > 100 ) then volume := 100;
+  if Command('FDC,1,VOL,' + IntToStr(volume), message) then begin
+    ApplyReply(MakeSentence('FDV,1,volume,' + IntToStr(volume)));  { As the Duo now has it }
+    Done(true, 'Duo volume ' + IntToStr(volume));
+  end
+  else Done(false, message);
+end;
+
+procedure EjectFloppy;
+var
+  code,k:integer;
+  letter:char;
+  letters,disk,message,line2:string;
+  mailbox:boolean;
+begin
+  if not Duo.Present then exit;
+  letter := ' ';
+  code := FdSelected;
+  if ( code >= 0 ) then letter := DriveOfImage(code);
+  if ( letter = ' ' ) then begin
+    letters := DuoLetters;
+    choiceCount := 0;
+    for k := 1 to length(letters) do
+      if ( length(DuoDisk(letters[k])) > 0 ) then AddChoice(letters[k] + ':', DuoDiskText(DuoDisk(letters[k])));
+    if ( choiceCount = 0 ) then begin
+      Done(true, 'No disk to take out');
+      exit;
+    end;
+    if ( choiceCount = 1 ) then k := 1 else k := Choose('Eject which drive?', 1);
+    if ( k = 0 ) then exit;
+    letter := choiceValue[k][1];
+  end;
+  disk := DuoDisk(letter);
+  { The mailbox needs a disk: with nothing in its drive SynthMinder can't reach the Duo }
+  mailbox := ( DuoBackend = dbFloppy ) and ( letter = DriveLetter(DuoDrive) )
+             and not ( TwoDuoDrives and ( length(DuoDisk(chr(ord('A') + ord('B') - ord(letter)))) > 0 ) );
+  if mailbox then line2 := 'SynthMinder talks to the Duo through it: not after.' else line2 := '';
+  if not Confirm('Eject', 'Take ' + DuoDiskText(disk) + ' out of ' + letter + ':?', line2, 'Eject') then exit;
+  if ( DuoBackend = dbFloppy ) then FlushDos;
+  if not Command('FDC,1,EJECT,' + letter, message) then begin
+    Done(false, message);
+    exit;
+  end;
+  if mailbox then begin
+    ProbeResult[DuoDrive] := FxNoDisk;
+    DuoBackend := dbNone;
+    DuoLooked := false;
+    ClearDuo;
+    Done(true, letter + ': is empty: R looks for the Duo again');
+  end
+  else if AwaitSwap(letter, '') then Done(true, letter + ': is empty')
+  else Done(true, 'Taking ' + DuoDiskText(disk) + ' out of ' + letter + ':');
+end;
+
+{ Enter on one of the Duo's settings }
+procedure ChangeDuoSetting;
+var
+  key,caption,current,now,value,message:string;
+  i,pick,start:integer;
+begin
+  if not RowSetting(setSel, current, now) then exit;
+  key := copy(SettingRows[setSel].Key, 4, 20);
+  caption := SettingRows[setSel].Caption;
+  for i := 1 to length(current) do if ( current[i] = '_' ) then current[i] := ',';
+  choiceCount := 0;
+  if ( key = 'drive' ) then begin
+    AddChoice('a', 'drive A: only');
+    AddChoice('a,b', 'drives A: and B:, a disk in each');
+    AddChoice('b', 'drive B: only');
+  end
+  else begin
+    AddChoice('-', 'the last disk in, as when it stopped');
+    for i := 0 to Duo.FileCount - 1 do
+      if ( Duo.Files[i].Kind = DuoFlux ) then AddChoice(Duo.Files[i].Name, 'a flux image')
+      else AddChoice(Duo.Files[i].Name, FloppySize(Duo.Files[i].SizeKB));
+  end;
+  start := 1;
+  for i := 1 to choiceCount do
+    if ( choiceValue[i] = current ) then start := i;
+  pick := Choose(caption, start);
+  if ( pick = 0 ) then exit;
+  value := choiceValue[pick];
+  if ( value = current ) then begin
+    Done(true, caption + ' is already ' + SettingText('fd:' + key, value));
+    exit;
+  end;
+  if Command('FDC,1,SET,' + key + ',' + value, message) then begin
+    Request('FDQ,1,SETTINGS');
+    Done(true, caption + ': ' + SettingText('fd:' + key, value) + ' at next start');
+  end
+  else Done(false, message);
+end;
+
 { What turning an on/off setting to `value` trades, for its question }
 function SettingWarning(key, value:string):string;
 begin
@@ -970,6 +1678,10 @@ var
   key,caption,current,value,message,turn:string;
   i,pick,start:integer;
 begin
+  if ( setSel >= 1 ) and ( setSel <= SettingRowCount ) and IsDuoRow(setSel) then begin
+    ChangeDuoSetting;
+    exit;
+  end;
   if ( Bay.SettingCount = 0 ) or ( setSel < 1 ) or ( setSel > SettingRowCount ) then exit;
   key := SettingRows[setSel].Key;
   caption := SettingRows[setSel].Caption;
@@ -1026,6 +1738,8 @@ end;
 
 procedure RefreshNow;
 begin
+  if ( DuoBackend = dbNone ) then DuoLooked := false;  { Look again: a disk may be in now }
+  LookForDuo;
   RefreshAll;
   if ( length(LinkProblem) > 0 ) then Done(false, LinkProblem) else Done(true, 'Up to date');
 end;
@@ -1037,6 +1751,10 @@ begin
   if ( tab = MenuSettings ) then begin
     while ( step < 0 ) do begin MoveSetSel(-1); inc(step); end;
     while ( step > 0 ) do begin MoveSetSel(1); dec(step); end;
+  end
+  else if ( tab = MenuFloppy ) then begin
+    while ( step < 0 ) do begin MoveFdSel(-1); inc(step); end;
+    while ( step > 0 ) do begin MoveFdSel(1); dec(step); end;
   end
   else if ( tab = MenuSynth ) then begin
     packSel := packSel + step;
@@ -1053,7 +1771,7 @@ end;
 procedure MoveMenu(step:integer);
 begin
   menuIndex := ( menuIndex + step + MenuCount ) mod MenuCount;
-  if ( menuIndex in [MenuSynth, MenuBay, MenuSettings] ) then tab := menuIndex;
+  if ( menuIndex in [MenuSynth, MenuBay, MenuFloppy, MenuSettings] ) then tab := menuIndex;
 end;
 
 procedure HandleKey;
@@ -1077,27 +1795,44 @@ begin
         #77: MoveMenu(1);                { Right }
       end;
     end;
-    #9: begin { Tab: Synth, Bay, Settings in turn }
+    #9: begin { Tab: Synth, Bay, Floppy, Settings in turn }
       if ( tab = MenuSynth ) then tab := MenuBay
-      else if ( tab = MenuBay ) then tab := MenuSettings
+      else if ( tab = MenuBay ) then tab := MenuFloppy
+      else if ( tab = MenuFloppy ) then tab := MenuSettings
       else tab := MenuSynth;
       menuIndex := tab;
     end;
     #13: case menuIndex of
       MenuSynth: PlayPack;
       MenuBay: InsertOrBoot;
+      MenuFloppy: FloppyEnter;
       MenuSettings: ChangeSetting;
       MenuRefresh: RefreshNow;
       MenuExit: quit := true;
     end;
     #27: quit := true;
-    '+', '=': SetVolume(Synth.Volume + 5);
-    '-', '_': SetVolume(Synth.Volume - 5);
+    '+', '=': if ( tab = MenuFloppy ) then SetDuoVolume(DuoVolume + 5) else SetVolume(Synth.Volume + 5);
+    '-', '_': if ( tab = MenuFloppy ) then SetDuoVolume(DuoVolume - 5) else SetVolume(Synth.Volume - 5);
     '<', ',': SetBalance(Synth.Balance - 5);
     '>', '.': SetBalance(Synth.Balance + 5);
     'r', 'R': RefreshNow;
-    'e', 'E': Eject;
+    'e', 'E': if ( tab = MenuFloppy ) then EjectFloppy else Eject;
+    'a', 'A': if ( tab = MenuFloppy ) then FloppyInto('A');
+    'b', 'B': if ( tab = MenuFloppy ) then FloppyInto('B');
   end;
+end;
+
+{ The Floppy tab the first time: look for the Duo (a second or two) }
+procedure LookOnFirstVisit;
+begin
+  if ( tab <> MenuFloppy ) or DuoLooked or ( DuoBackend <> dbNone ) then exit;
+  Done(true, 'Looking for the FDD Synth Duo on the floppy drives...');
+  DrawAll;
+  if LookForDuo then begin
+    RefreshDuo;
+    Done(true, 'Found the Duo on ' + DriveLetter(DuoDrive) + ':');
+  end
+  else Done(false, 'No FDD Synth Duo on the floppy drives');
 end;
 
 { ////////////////// Without the screen ////////////////// }
@@ -1108,6 +1843,7 @@ var
 begin
   writeln(ApplicationName);
   if ( Backend = bkDemo ) then writeln('Demo: a pretend Bay and synth')
+  else if ( Backend = bkNone ) then writeln('No IDE Synth Bay found')
   else writeln('Bay on the ', DriveName(BayDrive), ': ', BayDrive.Model, ' ', BayDrive.Firmware);
   writeln;
   writeln('IDE Synth Bay');
@@ -1130,11 +1866,29 @@ begin
     for i := 0 to Synth.PacksKnown - 1 do
       writeln('  pack ', i:2, '       ', PadRight(PackName(i), 33), Synth.Packs[i].Kind);
   end;
+  writeln;
+  writeln('FDD Synth Duo');
+  if not Duo.Present then
+    writeln('  not found on the floppy drives')
+  else begin
+    if ( DuoBackend = dbFloppy ) then
+      writeln('  found on      ', DriveLetter(DuoDrive), ': (cylinder 82, ', SecondsText(ExchangeMs), ' an exchange)');
+    for i := 1 to Duo.ValueCount do
+      writeln('  ', PadRight(Duo.Values[i].Key, 14), Duo.Values[i].Value);
+    for i := 0 to Duo.FileCount - 1 do
+      writeln('  image         ', PadRight(Duo.Files[i].Name, 25), PadRight(FloppySize(Duo.Files[i].SizeKB), 9),
+              Duo.Files[i].Kind);
+    for i := 0 to Duo.PackCount - 1 do
+      writeln('  pack ', i:2, '       ', Duo.Packs[i]);
+    for i := 1 to Duo.SettingCount do
+      writeln('  setting       ', PadRight(Duo.Settings[i].Key, 10), PadRight(Duo.Settings[i].Next, 26),
+              Duo.Settings[i].Now);
+  end;
 end;
 
 procedure Usage;
 begin
-  writeln(ApplicationName, ': the HDD Synth and IDE Synth Bay from DOS');
+  writeln(ApplicationName, ': the HDD Synth, IDE Synth Bay and FDD Synth Duo from DOS');
   writeln;
   writeln('  SYNMIND           find the Bay and open SynthMinder');
   writeln('  SYNMIND /DEMO     try it with a pretend Bay and synth');
@@ -1145,8 +1899,12 @@ begin
   writeln('  /DISC=QUAKE.ISO   put a CD image in the Bay''s CD-ROM drive (/DISC=- takes it out)');
   writeln('  /PACK=3           play a sample pack, by number, folder or name');
   writeln('  /VOL=60 /BAL=50   the synth''s volume and balance, 0-100');
+  writeln('  /FDA=GAMES.IMG    a disk image into the FDD Synth Duo''s A: (/FDB= into its B:)');
+  writeln('  /FDEJECT=A        take the disk out of the Duo''s A: (or B)');
+  writeln('  /FDPACK=2         the Duo''s sample pack, by number or name');
+  writeln('  /FDVOL=60         the Duo''s volume, 0-100');
   writeln('  /Q                no messages, just the ERRORLEVEL:');
-  writeln('                    0 done, 1 a bad option, 2 no Bay, 3 refused, 4 no synth');
+  writeln('                    0 done, 1 a bad option, 2 no Bay, 3 refused, 4 no synth, 5 no Duo');
 end;
 
 { ////////////////// Batch files ////////////////// }
@@ -1167,6 +1925,73 @@ begin
   if ( LastAck.Reason = 'nosynth' ) then RefusedCode := ExitNoSynth else RefusedCode := ExitRefused;
 end;
 
+{ Run one /FDA, /FDB, /FDEJECT, /FDPACK or /FDVOL: its ERRORLEVEL }
+function RunDuoAction(var a:TAction):integer;
+var
+  message,name:string;
+  letter:char;
+  i:integer;
+begin
+  RunDuoAction := ExitDone;
+  if not Duo.Present then begin
+    Say(ActionName(a.Kind) + ': no FDD Synth Duo found on the floppy drives');
+    RunDuoAction := ExitNoDuo;
+    exit;
+  end;
+  case a.Kind of
+    akFdA, akFdB: begin
+      if ( a.Kind = akFdA ) then letter := 'A' else letter := 'B';
+      i := FindDuoFile(a.Text);
+      if ( i < 0 ) then begin
+        Say(ActionName(a.Kind) + '=' + a.Text + ': not on the Duo''s card');
+        RunDuoAction := ExitRefused;
+        exit;
+      end;
+      name := Duo.Files[i].Name;
+      if ( UpperText(DuoDisk(letter)) = UpperText(name) ) then begin
+        Say(name + ' is in ' + letter + ': already');
+        exit;
+      end;
+      if ( DuoBackend = dbFloppy ) then FlushDos;
+      if not Command('FDC,1,INSERT,' + letter + ',' + name, message) then begin
+        Say(ActionName(a.Kind) + '=' + a.Text + ': ' + message);
+        RunDuoAction := ExitRefused;
+      end
+      { A batch file may use the drive next: it waits for the disk to be in }
+      else if AwaitSwap(letter, name) then Say('put ' + name + ' in ' + letter + ':')
+      else Say(name + ' is going into ' + letter + ':');
+    end;
+    akFdEject: begin
+      letter := a.Text[1];
+      if ( DuoBackend = dbFloppy ) then FlushDos;
+      if Command('FDC,1,EJECT,' + letter, message) then Say(letter + ': is empty')
+      else begin
+        Say('/FDEJECT=' + a.Text + ': ' + message);
+        RunDuoAction := ExitRefused;
+      end;
+    end;
+    akFdPack: begin
+      i := FindDuoPack(a.Text);
+      if ( i < 0 ) then begin
+        Say('/FDPACK=' + a.Text + ': the Duo has no such sample pack');
+        RunDuoAction := ExitRefused;
+      end
+      else if Command('FDC,1,PACK,' + IntToStr(i), message) then Say('the Duo plays ' + Duo.Packs[i])
+      else begin
+        Say('/FDPACK=' + a.Text + ': ' + message);
+        RunDuoAction := ExitRefused;
+      end;
+    end;
+    akFdVolume: begin
+      if Command('FDC,1,VOL,' + IntToStr(a.Number), message) then Say('Duo volume ' + IntToStr(a.Number))
+      else begin
+        Say('/FDVOL: ' + message);
+        RunDuoAction := ExitRefused;
+      end;
+    end;
+  end;
+end;
+
 { Run one /DISC, /PACK, /VOL or /BAL: its ERRORLEVEL }
 function RunAction(var a:TAction):integer;
 var
@@ -1174,6 +1999,15 @@ var
   i:integer;
 begin
   RunAction := ExitDone;
+  if ( a.Kind in [akFdA, akFdB, akFdEject, akFdPack, akFdVolume] ) then begin
+    RunAction := RunDuoAction(a);
+    exit;
+  end;
+  if ( Backend = bkNone ) then begin
+    Say(ActionName(a.Kind) + ': no IDE Synth Bay found');
+    RunAction := ExitNoBay;
+    exit;
+  end;
   if ( a.Kind <> akDisc ) and not Synth.Present then begin
     Say(ActionName(a.Kind) + ': no HDD Synth is answering on the Synth Link');
     RunAction := ExitNoSynth;
@@ -1231,6 +2065,16 @@ begin
   halt(ExitDone);
 end;
 
+{ A floppy option was given: the Duo is wanted at start }
+function NeedsDuo:boolean;
+var
+  i:integer;
+begin
+  NeedsDuo := false;
+  for i := 1 to actionCount do
+    if ( actions[i].Kind in [akFdA, akFdB, akFdEject, akFdPack, akFdVolume] ) then NeedsDuo := true;
+end;
+
 { ////////////////// Start ////////////////// }
 
 { For tests: save the text screen (character and colour for each cell,
@@ -1245,10 +2089,11 @@ begin
   Close(f);
 end;
 
-{ /DUMP=SYNTH or BAY: draw that tab, save it and exit }
+{ /DUMP=SYNTH, BAY, FLOPPY or SETTINGS: draw that tab, save it and exit }
 procedure DumpScreen(which:string);
 begin
   if ( which = 'BAY' ) then menuIndex := MenuBay
+  else if ( which = 'FLOPPY' ) then menuIndex := MenuFloppy
   else if ( which = 'SETTINGS' ) then menuIndex := MenuSettings
   else menuIndex := MenuSynth;
   tab := menuIndex;
@@ -1302,21 +2147,27 @@ begin
     end;
   end;
 
-  if demoMode then
-    Backend := bkDemo
+  if demoMode then begin
+    Backend := bkDemo;
+    DuoBackend := dbDemo;
+  end
   else begin
-    if not FindBay then begin
+    if FindBay then Backend := bkIde else Backend := bkNone;
+    { The floppy drives take a second or two to look at: only when there's
+      no Bay, or the Duo is wanted now. The Floppy tab looks otherwise }
+    if ( Backend = bkNone ) or statusOnly or NeedsDuo then LookForDuo;
+    if ( Backend = bkNone ) and ( DuoBackend = dbNone ) then begin
       if not quiet then begin
-        writeln('SynthMinder: no IDE Synth Bay found on the primary or secondary IDE channel.');
-        writeln('To try SynthMinder without one: SYNMIND /DEMO');
+        writeln('SynthMinder: no IDE Synth Bay found on the primary or secondary IDE channel,');
+        writeln('and no FDD Synth Duo on the floppy drives.');
+        writeln('To try SynthMinder without them: SYNMIND /DEMO');
       end;
-      halt(ExitNoBay);
+      if NeedsDuo then halt(ExitNoDuo) else halt(ExitNoBay);
     end;
-    Backend := bkIde;
   end;
 
   RefreshAll;
-  if ( Backend = bkIde ) and not Bay.Present then begin
+  if ( Backend = bkIde ) and not Bay.Present and ( DuoBackend = dbNone ) then begin
     if not quiet then begin
       writeln('SynthMinder found the IDE Synth Bay (', BayDrive.Model, ', firmware ', BayDrive.Firmware, ')');
       writeln('on the ', DriveName(BayDrive), ', but couldn''t talk to it:');
@@ -1332,8 +2183,10 @@ begin
     halt(0);
   end;
 
-  menuIndex := MenuSynth;
-  tab := MenuSynth;
+  if ( Backend = bkNone ) then menuIndex := MenuFloppy else menuIndex := MenuSynth;
+  tab := menuIndex;
+  fdSel := 0;
+  fdTop := 0;
   packSel := Synth.PackIndex;
   if ( packSel < 0 ) then packSel := 0;
   packTop := 0;
@@ -1353,6 +2206,7 @@ begin
   repeat
     DrawAll;
     HandleKey;
+    LookOnFirstVisit;
   until quit;
   { /DUMP=EXIT: the screen as it was when Esc was pressed, for scripted tests }
   if ( dumpTab = 'EXIT' ) then begin

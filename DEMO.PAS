@@ -1,6 +1,7 @@
 Unit Demo;
 {-----------------------------
-A pretend IDE Synth Bay with an HDD Synth behind it, for SYNMIND /DEMO
+A pretend IDE Synth Bay with an HDD Synth behind it, and a pretend
+FDD Synth Duo serving drives A: and B:, for SYNMIND /DEMO
 
 It answers requests with the same sentences the real ones send
 (docs/protocol.md), so the demo runs the code a real Bay does,
@@ -57,10 +58,32 @@ const
   SettingNow: array[1..SettingCount] of string[12] = (
     'cdrom', 'DOOM_SE.ISO', 'synth', 'on', 'on', 'on', 'on');
 
+  { The Duo's card }
+  DuoFileCount = 9;
+  DuoFiles: array[0..DuoFileCount - 1] of record
+    Name: string[12];
+    SizeKB: longint;
+    Kind: char;
+  end = (
+    (Name:'DOS622_1.IMG'; SizeKB:1440; Kind:'I'),
+    (Name:'DOS622_2.IMG'; SizeKB:1440; Kind:'I'),
+    (Name:'ELITE.IMG'; SizeKB:360; Kind:'I'),
+    (Name:'GAMES.IMG'; SizeKB:1440; Kind:'I'),
+    (Name:'LEMMINGS.HFE'; SizeKB:2014; Kind:'H'),
+    (Name:'MONKEY1.IMG'; SizeKB:720; Kind:'I'),
+    (Name:'WB13.ADF'; SizeKB:880; Kind:'A'),
+    (Name:'WORKS.IMG'; SizeKB:1440; Kind:'I'),
+    (Name:'ZORK1.IMG'; SizeKB:360; Kind:'I'));
+  DuoPackCount = 2;
+  DuoPacks: array[0..DuoPackCount - 1] of string[12] = ('Recorded', 'Placeholder');
+
 var
   volume,balance,pack:integer;
   disc,device0,device0Next:string[12];
   settingNext:array[1..SettingCount] of string[12];
+  duoVolume,duoPack:integer;
+  duoDisk:array[0..1] of string[12];  { '' for no disk }
+  duoDrivesNext,duoStart0,duoStart1:string[12];
 
 procedure DemoReset;
 var
@@ -73,6 +96,13 @@ begin
   device0 := 'ICL386MB.IMG';
   device0Next := '';
   for i := 1 to SettingCount do settingNext[i] := SettingNow[i];
+  duoVolume := 75;
+  duoPack := 0;
+  duoDisk[0] := 'GAMES.IMG';
+  duoDisk[1] := '';
+  duoDrivesNext := 'a,b';
+  duoStart0 := '';
+  duoStart1 := '';
 end;
 
 { ////////////////// Replies ////////////////// }
@@ -245,10 +275,164 @@ begin
     Ack(replies, 'SBK', f[3], 'unknown');
 end;
 
+{ ////////////////// The FDD Synth Duo ////////////////// }
+
+function DuoFileIndex(name:string):integer;
+var
+  i,j:integer;
+begin
+  DuoFileIndex := -1;
+  for j := 1 to length(name) do name[j] := UpCase(name[j]);
+  for i := 0 to DuoFileCount - 1 do
+    if ( DuoFiles[i].Name = name ) then DuoFileIndex := i;
+end;
+
+{ As the firmware's describe() }
+function DuoFormat(i:integer):string;
+begin
+  case DuoFiles[i].Kind of
+    'H': DuoFormat := 'flux 300 rpm';
+    'A': DuoFormat := 'Amiga DD';
+  else
+    DuoFormat := IntToStr(DuoFiles[i].SizeKB) + ' KB MFM 300 rpm';
+  end;
+end;
+
+procedure DuoStatus(var replies:TLines);
+var
+  d,i:integer;
+  k:char;
+begin
+  Reply(replies, 'FDV,1,firmware,0.25.0');
+  Reply(replies, 'FDV,1,drives,AB');
+  Reply(replies, 'FDV,1,mailbox,A');
+  Reply(replies, 'FDV,1,volume,' + IntToStr(duoVolume));
+  Reply(replies, 'FDV,1,pack,' + DuoPacks[duoPack]);
+  Reply(replies, 'FDV,1,pack_index,' + IntToStr(duoPack));
+  for d := 0 to 1 do begin
+    k := chr(ord('a') + d);
+    i := DuoFileIndex(duoDisk[d]);
+    if ( i < 0 ) then
+      Reply(replies, 'FDV,1,' + k + '_disk,-')
+    else begin
+      Reply(replies, 'FDV,1,' + k + '_disk,' + duoDisk[d]);
+      Reply(replies, 'FDV,1,' + k + '_kb,' + IntToStr(DuoFiles[i].SizeKB));
+      Reply(replies, 'FDV,1,' + k + '_format,' + DuoFormat(i));
+      Reply(replies, 'FDV,1,' + k + '_cylinder,0');
+      Reply(replies, 'FDV,1,' + k + '_motor,off');
+      Reply(replies, 'FDV,1,' + k + '_protect,off');
+    end;
+  end;
+end;
+
+{ From image `from`, as the firmware's FILES pages them }
+procedure DuoList(from:longint; var replies:TLines);
+var
+  i:integer;
+begin
+  if ( from >= DuoFileCount ) then begin
+    Reply(replies, 'FDF,1,' + IntToStr(DuoFileCount) + ',' + IntToStr(DuoFileCount) + ',-,0,-');
+    exit;
+  end;
+  for i := from to DuoFileCount - 1 do
+    Reply(replies, 'FDF,1,' + IntToStr(i) + ',' + IntToStr(DuoFileCount) + ',' + DuoFiles[i].Name + ','
+                   + IntToStr(DuoFiles[i].SizeKB) + ',' + DuoFiles[i].Kind);
+end;
+
+procedure DuoSettings(var replies:TLines);
+
+  function Shown(value:string):string;
+  var
+    i:integer;
+  begin
+    if ( length(value) = 0 ) then value := '-';
+    for i := 1 to length(value) do if ( value[i] = ',' ) then value[i] := '_';
+    Shown := value;
+  end;
+
+begin
+  Reply(replies, 'FDS,1,drive,' + Shown(duoDrivesNext) + ',a_b');
+  Reply(replies, 'FDS,1,device0,' + Shown(duoStart0) + ',-');
+  Reply(replies, 'FDS,1,device1,' + Shown(duoStart1) + ',-');
+end;
+
+{ A or B (any case) to 0 or 1, or -1 }
+function DuoDrive(letter:string):integer;
+begin
+  DuoDrive := -1;
+  if ( length(letter) <> 1 ) then exit;
+  case UpCase(letter[1]) of
+    'A': DuoDrive := 0;
+    'B': DuoDrive := 1;
+  end;
+end;
+
+procedure DuoCommand(var f:TFields; n:integer; var replies:TLines);
+var
+  d,i:integer;
+  value:longint;
+  joined:string;
+begin
+  if ( f[3] = 'INSERT' ) and ( n >= 5 ) then begin
+    d := DuoDrive(f[4]);
+    i := DuoFileIndex(f[5]);
+    if ( d < 0 ) then Ack(replies, 'FDK', 'INSERT', 'nodrive')
+    else if ( i < 0 ) then Ack(replies, 'FDK', 'INSERT', 'notfound')
+    else begin
+      duoDisk[d] := DuoFiles[i].Name;
+      Ack(replies, 'FDK', 'INSERT', '');
+    end;
+  end
+  else if ( f[3] = 'EJECT' ) and ( n >= 4 ) then begin
+    d := DuoDrive(f[4]);
+    if ( d < 0 ) then Ack(replies, 'FDK', 'EJECT', 'nodrive')
+    else if ( length(duoDisk[d]) = 0 ) then Ack(replies, 'FDK', 'EJECT', 'empty')
+    else begin
+      duoDisk[d] := '';
+      Ack(replies, 'FDK', 'EJECT', '');
+    end;
+  end
+  else if ( ( f[3] = 'VOL' ) or ( f[3] = 'PACK' ) ) and ( n >= 4 ) then begin
+    if not FieldToInt(f[4], value) then Ack(replies, 'FDK', f[3], 'range')
+    else if ( f[3] = 'VOL' ) and ( value >= 0 ) and ( value <= 100 ) then begin
+      duoVolume := value;
+      Ack(replies, 'FDK', 'VOL', '');
+    end
+    else if ( f[3] = 'PACK' ) and ( value >= 0 ) and ( value < DuoPackCount ) then begin
+      duoPack := value;
+      Ack(replies, 'FDK', 'PACK', '');
+    end
+    else Ack(replies, 'FDK', f[3], 'range');
+  end
+  else if ( f[3] = 'SET' ) and ( n >= 5 ) then begin
+    joined := f[5];
+    for i := 6 to n do joined := joined + ',' + f[i];
+    if ( f[4] = 'drive' ) then begin
+      if ( joined = 'a' ) or ( joined = 'b' ) or ( joined = 'a,b' ) then begin
+        duoDrivesNext := joined;
+        Ack(replies, 'FDK', 'SET', '');
+      end
+      else Ack(replies, 'FDK', 'SET', 'value');
+    end
+    else if ( f[4] = 'device0' ) or ( f[4] = 'device1' ) then begin
+      if ( joined <> '-' ) and ( DuoFileIndex(joined) < 0 ) then Ack(replies, 'FDK', 'SET', 'value')
+      else begin
+        if ( joined = '-' ) then joined := '';
+        if ( f[4] = 'device0' ) then duoStart0 := joined else duoStart1 := joined;
+        Ack(replies, 'FDK', 'SET', '');
+      end;
+    end
+    else Ack(replies, 'FDK', 'SET', 'key');
+  end
+  else
+    Ack(replies, 'FDK', f[3], 'unknown');
+end;
+
 procedure DemoHandle(request:string; var replies:TLines);
 var
   f:TFields;
-  n:integer;
+  n,i:integer;
+  from:longint;
 begin
   ClearLines(replies);
   if not ParseSentence(request, f, n) or ( n < 3 ) or ( f[2] <> '1' ) then begin
@@ -263,6 +447,18 @@ begin
   else if ( f[1] = 'SBQ' ) and ( f[3] = 'FILES' ) then BayFiles(replies)
   else if ( f[1] = 'SBQ' ) and ( f[3] = 'SETTINGS' ) then BaySettings(replies)
   else if ( f[1] = 'SBC' ) then BayCommand(f, n, replies)
+  else if ( f[1] = 'FDQ' ) and ( f[3] = 'STATUS' ) then DuoStatus(replies)
+  else if ( f[1] = 'FDQ' ) and ( f[3] = 'FILES' ) then begin
+    if ( n < 4 ) or not FieldToInt(f[4], from) then from := 0;
+    DuoList(from, replies);
+  end
+  else if ( f[1] = 'FDQ' ) and ( f[3] = 'PACKS' ) then begin
+    for i := 0 to DuoPackCount - 1 do
+      Reply(replies, 'FDP,1,' + IntToStr(i) + ',' + IntToStr(DuoPackCount) + ',' + DuoPacks[i]);
+  end
+  else if ( f[1] = 'FDQ' ) and ( f[3] = 'SETTINGS' ) then DuoSettings(replies)
+  else if ( f[1] = 'FDC' ) then DuoCommand(f, n, replies)
+  else if ( copy(f[1], 1, 2) = 'FD' ) then Ack(replies, 'FDK', f[3], 'unknown')
   else Ack(replies, 'SBK', f[1], 'unknown');
 end;
 

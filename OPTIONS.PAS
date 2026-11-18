@@ -6,6 +6,10 @@ SynthMinder's command-line changes, for batch files
   SYNMIND /DISC=-            take the disc out
   SYNMIND /PACK=3            play sample pack 3, or by its folder or name
   SYNMIND /VOL=60 /BAL=50    the synth's volume and balance, 0-100
+  SYNMIND /FDA=GAMES.IMG     a disk image into the FDD Synth Duo's A: (/FDB= its B:)
+  SYNMIND /FDEJECT=A         take the disk out of the Duo's A: (or B)
+  SYNMIND /FDPACK=2          the Duo's sample pack, by number or name
+  SYNMIND /FDVOL=60          the Duo's volume, 0-100
   SYNMIND /Q ...             no messages, just the ERRORLEVEL
 
 They run in the order given. The ERRORLEVEL says how it went (Exit...).
@@ -25,12 +29,14 @@ const
   ExitNoBay = 2;     { No Bay found, or it didn't answer }
   ExitRefused = 3;   { The Bay or synth said no: not on the card, no CD-ROM drive, out of range }
   ExitNoSynth = 4;   { No HDD Synth answering on the Synth Link }
+  ExitNoDuo = 5;     { No FDD Synth Duo found on the floppy drives, or it didn't answer }
 
 type
-  TActionKind = (akDisc, akPack, akVolume, akBalance);
+  TActionKind = (akDisc, akPack, akVolume, akBalance, akFdA, akFdB, akFdEject, akFdPack, akFdVolume);
   TAction = record
     Kind: TActionKind;
-    Text: string[32];   { /DISC: the image, '-' to eject; /PACK: a number, folder or name }
+    Text: string[32];   { /DISC: the image, '-' to eject; /PACK: a number, folder or name;
+                          /FDA, /FDB: the image; /FDEJECT: A or B; /FDPACK: a number or name }
     Number: longint;    { /VOL, /BAL: 0-100 }
   end;
 
@@ -53,6 +59,11 @@ begin
     akPack: ActionName := '/PACK';
     akVolume: ActionName := '/VOL';
     akBalance: ActionName := '/BAL';
+    akFdA: ActionName := '/FDA';
+    akFdB: ActionName := '/FDB';
+    akFdEject: ActionName := '/FDEJECT';
+    akFdPack: ActionName := '/FDPACK';
+    akFdVolume: ActionName := '/FDVOL';
   end;
 end;
 
@@ -73,6 +84,11 @@ begin
   else if ( name = '/PACK' ) then action.Kind := akPack
   else if ( name = '/VOL' ) then action.Kind := akVolume
   else if ( name = '/BAL' ) then action.Kind := akBalance
+  else if ( name = '/FDA' ) then action.Kind := akFdA
+  else if ( name = '/FDB' ) then action.Kind := akFdB
+  else if ( name = '/FDEJECT' ) then action.Kind := akFdEject
+  else if ( name = '/FDPACK' ) then action.Kind := akFdPack
+  else if ( name = '/FDVOL' ) then action.Kind := akFdVolume
   else exit;
   ParseAction := true;
   action.Text := '';
@@ -86,8 +102,11 @@ begin
     exit;
   end;
   case action.Kind of
-    akDisc, akPack: action.Text := value;
-    akVolume, akBalance:
+    akDisc, akPack, akFdA, akFdB, akFdPack: action.Text := value;
+    akFdEject:
+      if ( value = 'A' ) or ( value = 'B' ) then action.Text := value
+      else problem := name + '= takes A or B';
+    akVolume, akBalance, akFdVolume:
       if not FieldToInt(value, number) or ( number < 0 ) or ( number > 100 ) then
         problem := name + '= takes 0 to 100'
       else

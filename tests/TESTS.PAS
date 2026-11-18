@@ -288,6 +288,101 @@ begin
   CheckInt('no such pack', -1, FindPack('FLOPPY'));
 end;
 
+{ ////////////////// The FDD Synth Duo ////////////////// }
+
+procedure TestDuo;
+begin
+  DemoReset;
+  ClearDuo;
+  CheckBool('duo absent at first', false, Duo.Present);
+  Ask('FDQ,1,STATUS');
+  CheckBool('duo present', true, Duo.Present);
+  CheckStr('duo firmware', '0.25.0', DuoValue('firmware'));
+  CheckStr('duo drives', 'AB', DuoValue('drives'));
+  CheckStr('duo mailbox', 'A', DuoValue('mailbox'));
+  CheckStr('duo a disk', 'GAMES.IMG', DuoValue('a_disk'));
+  CheckStr('duo a format', '1440 KB MFM 300 rpm', DuoValue('a_format'));
+  CheckStr('duo b empty', '-', DuoValue('b_disk'));
+  CheckStr('duo volume', '75', DuoValue('volume'));
+
+  { The images, in pages: the demo's fit in one }
+  Ask('FDQ,1,FILES,0');
+  CheckInt('duo files', 9, Duo.FileCount);
+  CheckInt('duo files total', 9, Duo.FilesTotal);
+  CheckStr('duo file 5', 'MONKEY1.IMG', Duo.Files[5].Name);
+  CheckInt('duo file 5 size', 720, Duo.Files[5].SizeKB);
+  CheckStr('duo flux kind', DuoFlux, Duo.Files[4].Kind);
+  Ask('FDQ,1,FILES,9');
+  CheckInt('duo files past the end', 9, Duo.FileCount);
+  CheckInt('find duo file', 3, FindDuoFile('games.img'));
+  CheckInt('no such duo file', -1, FindDuoFile('NOPE.IMG'));
+
+  Ask('FDQ,1,PACKS');
+  CheckInt('duo packs', 2, Duo.PackCount);
+  CheckInt('duo pack by name', 1, FindDuoPack('placeholder'));
+  CheckInt('duo pack by number', 0, FindDuoPack('0'));
+  CheckInt('duo pack out of range', -1, FindDuoPack('2'));
+
+  Ask('FDQ,1,SETTINGS');
+  CheckBool('duo drive setting', true, DuoSettingIndex('drive') > 0);
+  CheckStr('duo drive next', 'a_b', Duo.Settings[DuoSettingIndex('drive')].Next);
+
+  { Changes }
+  Ask('FDC,1,INSERT,B,monkey1.img');
+  CheckBool('insert ok', true, LastAck.Ok);
+  CheckStr('insert ack source', 'FDK', LastAck.Source);
+  Ask('FDQ,1,STATUS');
+  CheckStr('b after insert', 'MONKEY1.IMG', DuoValue('b_disk'));
+  CheckStr('b format', '720 KB MFM 300 rpm', DuoValue('b_format'));
+  Ask('FDC,1,INSERT,B,NOPE.IMG');
+  CheckStr('insert notfound', 'notfound', LastAck.Reason);
+  Ask('FDC,1,INSERT,C,GAMES.IMG');
+  CheckStr('insert nodrive', 'nodrive', LastAck.Reason);
+  Ask('FDC,1,EJECT,B');
+  CheckBool('eject ok', true, LastAck.Ok);
+  Ask('FDC,1,EJECT,B');
+  CheckStr('eject empty', 'empty', LastAck.Reason);
+  Ask('FDC,1,VOL,60');
+  Ask('FDQ,1,STATUS');
+  CheckStr('duo volume after', '60', DuoValue('volume'));
+  Ask('FDC,1,VOL,101');
+  CheckStr('duo volume range', 'range', LastAck.Reason);
+  Ask('FDC,1,SET,drive,a');
+  CheckBool('set drive', true, LastAck.Ok);
+  Ask('FDC,1,SET,drive,a,b');
+  CheckBool('set two drives', true, LastAck.Ok);
+  Ask('FDC,1,SET,device0,NOPE.IMG');
+  CheckStr('set device0 notfound', 'value', LastAck.Reason);
+  Ask('FDC,1,SET,interface,amiga');
+  CheckStr('set interface refused', 'key', LastAck.Reason);
+  Ask('FDQ,1,MODEL');
+  CheckStr('duo unknown', 'unknown', LastAck.Reason);
+  CheckStr('duo unknown source', 'FDK', LastAck.Source);
+end;
+
+procedure TestDuoOptions;
+var
+  a:TAction;
+  problem:string;
+begin
+  CheckBool('/FDA', true, ParseAction('/FDA=GAMES.IMG', a, problem));
+  CheckBool('/FDA kind', true, a.Kind = akFdA);
+  CheckStr('/FDA text', 'GAMES.IMG', a.Text);
+  CheckStr('/FDA no problem', '', problem);
+  CheckBool('/FDB', true, ParseAction('-FDB=MONKEY1.IMG', a, problem));
+  CheckBool('/FDB kind', true, a.Kind = akFdB);
+  CheckBool('/FDEJECT', true, ParseAction('/FDEJECT=B', a, problem));
+  CheckStr('/FDEJECT text', 'B', a.Text);
+  CheckBool('/FDEJECT C', true, ParseAction('/FDEJECT=C', a, problem));
+  CheckStr('/FDEJECT C problem', '/FDEJECT= takes A or B', problem);
+  CheckBool('/FDVOL', true, ParseAction('/FDVOL=60', a, problem));
+  CheckInt('/FDVOL number', 60, a.Number);
+  CheckBool('/FDVOL 101', true, ParseAction('/FDVOL=101', a, problem));
+  CheckStr('/FDVOL 101 problem', '/FDVOL= takes 0 to 100', problem);
+  CheckBool('/FDPACK', true, ParseAction('/FDPACK=PLACEHOLDER', a, problem));
+  CheckStr('/FDPACK name', 'FDPACK', copy(ActionName(a.Kind), 2, 6));
+end;
+
 begin
   Passes := 0;
   Failures := 0;
@@ -296,6 +391,8 @@ begin
   TestDemo;
   TestSettings;
   TestOptions;
+  TestDuo;
+  TestDuoOptions;
   writeln(Passes, ' passed, ', Failures, ' failed');
   if ( Failures > 0 ) then halt(1);
 end.

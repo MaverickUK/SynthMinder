@@ -1,6 +1,7 @@
 Unit Model;
 {-----------------------------
-What SynthMinder knows about the HDD Synth and the IDE Synth Bay
+What SynthMinder knows about the HDD Synth, the IDE Synth Bay and
+the FDD Synth Duo
 
 Filled from the sentences they reply with (docs/protocol.md):
 
@@ -8,6 +9,10 @@ Filled from the sentences they reply with (docs/protocol.md):
   $HDP  one of the synth's packs  $SBF  one file on the Bay's card
   $HDK  the synth's reply to a    $SBK  the Bay's reply to a command
         command                   $SBS  one of the Bay's settings
+
+  $FDV  one of the Duo's values   $FDF  one image on the Duo's card
+  $FDP  one of the Duo's packs    $FDS  one of the Duo's settings
+  $FDK  the Duo's reply to a command
 
 No screen or ports, so it's unit tested on any OS.
 ------------------------------}
@@ -24,6 +29,16 @@ const
   { File kinds on the Bay's card }
   KindHardDisk = 'H';
   KindCdRom = 'C';
+
+  MaxDuoFiles = 64;   { As many as the Duo lists }
+  MaxDuoPacks = 16;
+  MaxDuoValues = 24;
+  MaxDuoSettings = 6;
+
+  { Image kinds on the Duo's card }
+  DuoImage = 'I';     { Sectors: IMG, IMA, DSK }
+  DuoFlux = 'H';      { HFE }
+  DuoAmiga = 'A';     { ADF }
 
 type
   TPack = record
@@ -74,8 +89,33 @@ type
     FileCount: integer;
   end;
 
+  { The FDD Synth Duo: values can be long (an image's name) }
+  TDuoValue = record
+    Key: string[16];
+    Value: string[63];
+  end;
+
+  TDuoFile = record
+    Name: string[47];
+    SizeKB: longint;
+    Kind: char;         { DuoImage, DuoFlux or DuoAmiga }
+  end;
+
+  TDuo = record
+    Present: boolean;   { Has answered }
+    Values: array[1..MaxDuoValues] of TDuoValue;
+    ValueCount: integer;
+    Settings: array[1..MaxDuoSettings] of TBaySetting;
+    SettingCount: integer;
+    Files: array[0..MaxDuoFiles - 1] of TDuoFile;
+    FileCount: integer;  { How many of Files are filled in }
+    FilesTotal: integer; { How many the Duo has: it lists them in pages }
+    Packs: array[0..MaxDuoPacks - 1] of string[32];
+    PackCount: integer;
+  end;
+
   TAck = record
-    Source: string[3];  { HDK or SBK }
+    Source: string[3];  { HDK, SBK or FDK }
     What: string[16];
     Ok: boolean;
     Reason: string[32];
@@ -84,12 +124,21 @@ type
 var
   Synth: TSynth;
   Bay: TBay;
+  Duo: TDuo;
   LastAck: TAck;      { The last reply to a command }
   AckCount: integer;  { Goes up with each reply to a command }
 
 procedure ClearSynth;
 procedure ClearBay;
+procedure ClearDuo;
 function ApplyReply(line:string):boolean;
+function DuoValue(key:string):string;
+{ A Duo setting's index in Duo.Settings, or 0 }
+function DuoSettingIndex(key:string):integer;
+{ An image on the Duo's card by name, in any case: its index, or -1 }
+function FindDuoFile(name:string):integer;
+{ A Duo pack by number (from 0) or name, in any case: its index, or -1 }
+function FindDuoPack(text:string):integer;
 function BayValue(key:string):string;
 procedure SetBayValue(key:string; value:string);
 { A setting's index in Bay.Settings, or 0 if the Bay didn't send it }
@@ -113,6 +162,11 @@ end;
 procedure ClearBay;
 begin
   FillChar(Bay, SizeOf(Bay), 0);
+end;
+
+procedure ClearDuo;
+begin
+  FillChar(Duo, SizeOf(Duo), 0);
 end;
 
 { One of the Bay's values by key, e.g. 'device0'; '' if it didn't send it }
@@ -224,6 +278,61 @@ begin
   ApplyStatus := true;
 end;
 
+function DuoValue(key:string):string;
+var
+  i:integer;
+begin
+  DuoValue := '';
+  for i := 1 to Duo.ValueCount do
+    if ( Duo.Values[i].Key = key ) then begin
+      DuoValue := Duo.Values[i].Value;
+      exit;
+    end;
+end;
+
+function DuoSettingIndex(key:string):integer;
+var
+  i:integer;
+begin
+  DuoSettingIndex := 0;
+  for i := 1 to Duo.SettingCount do
+    if ( Duo.Settings[i].Key = key ) then begin
+      DuoSettingIndex := i;
+      exit;
+    end;
+end;
+
+function FindDuoFile(name:string):integer;
+var
+  i:integer;
+begin
+  FindDuoFile := -1;
+  name := UpperOf(name);
+  for i := 0 to Duo.FileCount - 1 do
+    if ( UpperOf(Duo.Files[i].Name) = name ) then begin
+      FindDuoFile := i;
+      exit;
+    end;
+end;
+
+function FindDuoPack(text:string):integer;
+var
+  i:integer;
+  number:longint;
+begin
+  FindDuoPack := -1;
+  if FieldToInt(text, number) then begin
+    if ( number >= 0 ) and ( number < Duo.PackCount ) then FindDuoPack := number;
+    exit;
+  end;
+  text := UpperOf(text);
+  for i := 0 to Duo.PackCount - 1 do
+    if ( UpperOf(Duo.Packs[i]) = text ) then begin
+      FindDuoPack := i;
+      exit;
+    end;
+end;
+
 { $HDP,1,<index>,<count>,<folder>,<name>[,<kind>] - kind from synth v0.24.0 }
 function ApplyPack(var f:TFields; n:integer):boolean;
 var
@@ -308,6 +417,84 @@ begin
   ApplyFile := true;
 end;
 
+{ $FDV,1,<key>,<value> }
+function ApplyDuoValue(var f:TFields; n:integer):boolean;
+var
+  i:integer;
+begin
+  ApplyDuoValue := false;
+  if ( n < 4 ) or ( length(f[3]) = 0 ) then exit;
+  Duo.Present := true;
+  ApplyDuoValue := true;
+  for i := 1 to Duo.ValueCount do
+    if ( Duo.Values[i].Key = f[3] ) then begin
+      Duo.Values[i].Value := f[4];
+      exit;
+    end;
+  if ( Duo.ValueCount >= MaxDuoValues ) then exit;
+  inc(Duo.ValueCount);
+  Duo.Values[Duo.ValueCount].Key := f[3];
+  Duo.Values[Duo.ValueCount].Value := f[4];
+end;
+
+{ $FDF,1,<index>,<count>,<name>,<sizeKB>,<kind>; index = count past the end }
+function ApplyDuoFile(var f:TFields; n:integer):boolean;
+var
+  index,count,size:longint;
+begin
+  ApplyDuoFile := false;
+  if ( n < 7 ) or ( length(f[7]) <> 1 ) then exit;
+  if not ( FieldToInt(f[3], index) and FieldToInt(f[4], count) and FieldToInt(f[6], size) ) then exit;
+  if ( count > MaxDuoFiles ) then count := MaxDuoFiles;
+  Duo.FilesTotal := count;
+  Duo.Present := true;
+  ApplyDuoFile := true;
+  if ( index < 0 ) or ( index >= count ) then exit; { Past the end: nothing more }
+  with Duo.Files[index] do begin
+    Name := f[5];
+    SizeKB := size;
+    Kind := f[7][1];
+  end;
+  if ( index + 1 > Duo.FileCount ) then Duo.FileCount := index + 1;
+end;
+
+{ $FDP,1,<index>,<count>,<name> }
+function ApplyDuoPack(var f:TFields; n:integer):boolean;
+var
+  index,count:longint;
+begin
+  ApplyDuoPack := false;
+  if ( n < 5 ) then exit;
+  if not ( FieldToInt(f[3], index) and FieldToInt(f[4], count) ) then exit;
+  if ( index < 0 ) or ( index >= MaxDuoPacks ) then exit;
+  Duo.Packs[index] := f[5];
+  if ( index + 1 > Duo.PackCount ) then Duo.PackCount := index + 1;
+  if ( count > MaxDuoPacks ) then count := MaxDuoPacks;
+  if ( Duo.PackCount > count ) then Duo.PackCount := count;
+  Duo.Present := true;
+  ApplyDuoPack := true;
+end;
+
+{ $FDS,1,<key>,<next>,<now> }
+function ApplyDuoSetting(var f:TFields; n:integer):boolean;
+var
+  i:integer;
+begin
+  ApplyDuoSetting := false;
+  if ( n < 5 ) or ( length(f[3]) = 0 ) then exit;
+  i := DuoSettingIndex(f[3]);
+  if ( i = 0 ) then begin
+    if ( Duo.SettingCount >= MaxDuoSettings ) then exit;
+    inc(Duo.SettingCount);
+    i := Duo.SettingCount;
+  end;
+  Duo.Settings[i].Key := f[3];
+  Duo.Settings[i].Next := f[4];
+  Duo.Settings[i].Now := f[5];
+  Duo.Present := true;
+  ApplyDuoSetting := true;
+end;
+
 { Take in one sentence of a reply. False if it isn't valid or understood }
 function ApplyReply(line:string):boolean;
 var
@@ -320,14 +507,19 @@ begin
 
   if ( f[1] = 'HDS' ) then ApplyReply := ApplyStatus(f, n)
   else if ( f[1] = 'HDP' ) then ApplyReply := ApplyPack(f, n)
-  else if ( f[1] = 'HDK' ) or ( f[1] = 'SBK' ) then ApplyReply := ApplyAck(f, n)
+  else if ( f[1] = 'HDK' ) or ( f[1] = 'SBK' ) or ( f[1] = 'FDK' ) then ApplyReply := ApplyAck(f, n)
   else if ( f[1] = 'SBV' ) then ApplyReply := ApplyValue(f, n)
   else if ( f[1] = 'SBF' ) then ApplyReply := ApplyFile(f, n)
-  else if ( f[1] = 'SBS' ) then ApplyReply := ApplySetting(f, n);
+  else if ( f[1] = 'SBS' ) then ApplyReply := ApplySetting(f, n)
+  else if ( f[1] = 'FDV' ) then ApplyReply := ApplyDuoValue(f, n)
+  else if ( f[1] = 'FDF' ) then ApplyReply := ApplyDuoFile(f, n)
+  else if ( f[1] = 'FDP' ) then ApplyReply := ApplyDuoPack(f, n)
+  else if ( f[1] = 'FDS' ) then ApplyReply := ApplyDuoSetting(f, n);
 end;
 
 begin
   ClearSynth;
   ClearBay;
+  ClearDuo;
   AckCount := 0;
 end.
