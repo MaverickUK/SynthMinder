@@ -84,6 +84,13 @@ const
   ProtocolVersion = 1;
   ReadTries = 6;            { Revolutions to wait for the reply: 1.2 s at 300 rpm }
 
+  { The floppy controller's ports (a uPD765 or a clone of it) }
+  FdcDor = $3F2;    { digital output: motors, select, reset }
+  FdcMsr = $3F4;    { main status }
+  FdcData = $3F5;
+  FdcSeek = $0F;
+  FdcSenseInterrupt = $08;
+
   { BIOS status codes (AH after INT 13h) }
   BsBadCommand = $01;
   BsChanged = $06;
@@ -176,12 +183,83 @@ begin
   Intr($13, regs);
 end;
 
+{ ////////////////// The controller, directly ////////////////// }
+
+procedure WaitTicks(n:longint);
+var
+  start:longint;
+begin
+  start := Ticks;
+  repeat until ( Ticks - start >= n ) or ( Ticks < start );
+end;
+
+{ A byte to the controller once it's ready for one. False after about 0.2 s }
+function FdcWrite(b:byte):boolean;
+var
+  start:longint;
+begin
+  FdcWrite := false;
+  start := Ticks;
+  repeat
+    if ( Port[FdcMsr] and $C0 ) = $80 then begin
+      Port[FdcData] := b;
+      FdcWrite := true;
+      exit;
+    end;
+  until ( Ticks - start > 3 ) or ( Ticks < start );
+end;
+
+function FdcRead(var b:byte):boolean;
+var
+  start:longint;
+begin
+  FdcRead := false;
+  start := Ticks;
+  repeat
+    if ( Port[FdcMsr] and $C0 ) = $C0 then begin
+      b := Port[FdcData];
+      FdcRead := true;
+      exit;
+    end;
+  until ( Ticks - start > 3 ) or ( Ticks < start );
+end;
+
+{ The head to cylinder 82 by the controller itself, for a Duo with no disk
+  in: a BIOS may not seek a drive whose disk it hasn't recognised (the
+  Evesham's tries to make the disk out where the head is, finds nothing, and
+  reports the drive not ready without moving the head). At cylinder 82 the
+  Duo answers as if a disk were in, so then the BIOS recognises the mailbox's
+  track. The motor on as the BIOS does it, and the BIOS told so; the seek's
+  interrupt waited for (the BIOS's handler sets bit 7 of 40:3E) and cleared
+  with Sense Interrupt Status, so the BIOS's next command starts clean }
+procedure FdcSeekMailbox(drive:byte);
+var
+  start:longint;
+  st0,pcn:byte;
+begin
+  if ( drive > 1 ) then exit;
+  Port[FdcDor] := $0C or drive or ( $10 shl drive );  { not reset, DMA and interrupts on, this drive's motor }
+  Mem[$40:$3F] := Mem[$40:$3F] or ( 1 shl drive );   { the BIOS's motor bits: running }
+  Mem[$40:$40] := $FF;                                { and its count to turning it off: about 14 s }
+  WaitTicks(9);                                       { spin-up: half a second }
+  Mem[$40:$3E] := Mem[$40:$3E] and $7F;
+  if not ( FdcWrite(FdcSeek) and FdcWrite(drive) and FdcWrite(Cylinder) ) then exit;
+  start := Ticks;
+  repeat until ( ( Mem[$40:$3E] and $80 ) <> 0 ) or ( Ticks - start > 18 ) or ( Ticks < start );
+  Mem[$40:$3E] := Mem[$40:$3E] and $7F;
+  if FdcWrite(FdcSenseInterrupt) then
+    if FdcRead(st0) then FdcRead(pcn);
+  Mem[$40:$94 + drive] := Cylinder;  { the BIOS's record of where the head is }
+  WaitTicks(3);                      { the head settles }
+end;
+
 { With the BIOS's usual retries: three tries, a reset between them (a
   motor still spinning up fails the first). A disk change is noted and
   tried again. A drive that isn't ready is tried once more with the head
   at cylinder 82 first: a Duo with no disk in answers only there, and a
-  BIOS may look at the disk change line before it seeks. Each not-ready
-  waits seconds, so no more than that }
+  BIOS may look at the disk change line before it seeks; if the BIOS still
+  won't move the head, the controller moves it (FdcSeekMailbox). Each
+  not-ready waits seconds, so no more than that }
 function Bios(fn:byte; drive:byte; sector, count:byte):byte;
 var
   tries:integer;
@@ -199,6 +277,12 @@ begin
       SeekMailbox(drive);
       status := BiosOnce(fn, drive, sector, count);
       if ( status = BsChanged ) and ( drive < MaxFloppies ) then changed[drive] := true;
+      { Still not ready: the BIOS wouldn't move the head. The controller moves it }
+      if ( status = BsTimeout ) then begin
+        FdcSeekMailbox(drive);
+        status := BiosOnce(fn, drive, sector, count);
+        if ( status = BsChanged ) and ( drive < MaxFloppies ) then changed[drive] := true;
+      end;
     end;
     if ( status = 0 ) or ( status = BsTimeout ) or ( status = BsBadCommand ) then begin
       Bios := status;

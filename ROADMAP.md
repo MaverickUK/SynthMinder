@@ -56,9 +56,10 @@ Built on 18 Nov 2026 in SynthMinder branch `fdd-duo` (PR MaverickUK/SynthMinder#
 - [x] The Duo's mailbox at cylinder 82 (`MailboxSource`, `duo_commands`), host-tested with its virtual PC: the reply on the first revolution at the board's write costs, at 500 and 250 kbit/s; write-protect released at cylinder 82; a hello from power-on, so finding it only reads
 - [x] `FLOPPY.PAS`: INT 13h, SMARTDRV told to forget its floppy reads, DOS told of disk changes; the Floppy tab, the Duo's settings, `/FDA=` `/FDB=` `/FDEJECT=` `/FDPACK=` `/FDVOL=`; the pretend Duo in `/DEMO`; the model and demo unit-tested
 - [ ] `SYNMIND.EXE` built by CI, and the Floppy tab looked at in DOSBox-X (`/DEMO`, `/DUMP=FLOPPY`)
-- [ ] **On a PC with the Duo** (the Evesham): found on A:, an exchange's time, a disk swapped and DOS reading the new one (`DIR A:` straight after), two drives, a write-protected disk, SMARTDRV loaded. The firmware has never run on hardware yet
+- [x] **On a PC with the Duo** (the Evesham, 18 Nov): found on A: with a disk in, the images listed, a disk swapped, the volume, the Settings tab's Duo group
+- [ ] Still to try: two drives, a write-protected disk, SMARTDRV loaded
 - [ ] BIOSes that check the cylinder against their drive table and refuse 82: program the controller directly (ports 3F0h-3F7h, DMA channel 2)
-- [x] The mailbox with no disk in: at cylinder 82 an empty Duo answers as if a disk were in, and SynthMinder seeks there itself when the BIOS says not ready (Duo 0.25.0-dev.2; to try on a PC: does the BIOS look at the change line before it seeks?)
+- [ ] The mailbox with no disk in: at cylinder 82 an empty Duo answers as if a disk were in (Duo 0.25.0-dev.2). On the Evesham (18 Nov) the BIOS wouldn't seek an empty drive at all, so SynthMinder now moves the head with the floppy controller itself (`FdcSeekMailbox`): to try on the Evesham
 - [x] The seek's sound: the trip back from cylinder 82 is silent (Duo 0.25.0-dev.2); the trip out is heard, since it's like any other seek until it ends
 - [ ] A floppy per game from GameMinder: see *GameMinder: the right disc and disk for each game*, below
 
