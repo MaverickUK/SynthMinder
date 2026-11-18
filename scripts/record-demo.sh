@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Record the README demo of SynthMinder running in DOSBox-X, against the
-# pretend Bay and synth (SYNMIND /DEMO), as GameMinder's scripts/record-demo.sh
+# pretend Bay, synth and Duo (SYNMIND /DEMO), as GameMinder's scripts/record-demo.sh
 # does: DOSBox-X's AUTOTYPE presses the keys and DX-CAPTURE records the screen.
 # No window is shown unless --show is given.
 #
@@ -37,16 +37,18 @@ done
 # start it with ",": every key after the first was lost (-w waits instead):
 #   the Synth tab: up to another pack and play it, volume up, balance right;
 #   help (F1); the Bay tab (Tab): End to the last CD image, Enter and confirm
-#   to put it in the CD-ROM drive, E and confirm to eject it; the Settings
-#   tab (Tab): seek timing set to fdb05 from its chooser, write-behind's
-#   question (with what it trades) left with Esc; Esc exits
-keys="up up up enter , , equals equals equals period period , f1 , , esc , tab , end enter , enter , , e , enter , , tab , down down , enter , down down down down , enter , , down down , enter , , esc , , esc"
+#   to put it in the CD-ROM drive, E and confirm to eject it; the Floppy tab
+#   (Tab): MONKEY1.IMG into the Duo's B: (the B key), then E and confirm to
+#   take it out; the Settings tab (Tab): seek timing set to fdb05 from its
+#   chooser, write-behind's question (with what it trades) left with Esc;
+#   Esc exits
+keys="up up up enter , , equals equals period , f1 , , esc , tab , end enter , enter , e , enter , tab , down down down down , b , , e , enter , , tab , down down , enter , down down down down , enter , , down down , enter , , esc , , esc"
 
 for attempt in 1 2 3; do
   rm -rf "$work/c" "$work/capture"
   mkdir -p "$work/c" "$work/capture"
   cp "$exe" "$work/c/SYNMIND.EXE"
-  env $hide "$dosbox" -fastlaunch -nomenu -time-limit 120 \
+  env $hide "$dosbox" -fastlaunch -nomenu -time-limit 180 \
     -set "dosbox captures=$(native "$work/capture")" \
     -c "mount c \"$(native "$work/c")\"" -c "c:" -c "cls" \
     -c "autotype -w 3 -p 1.2 $keys" \
