@@ -49,6 +49,19 @@ Built in HDD Synth 0.25.0 (branch `synthminder-link`, PR MaverickUK/HDDSynth_Nat
 
 The test disk is `SYNTHMIN.IMG` on the Bay's card (FreeDOS, `SYNMIND.EXE` from this branch's CI build, `HDDBENCH`), built by HDDSynthPro's `tools/bench-image/build_image.py` with `SYNMIND.EXE` and a plain `AUTOEXEC.BAT` added by mtools. The card's `device0` points at it; `WIN98.IMG` is the owner's usual disk.
 
+## 0.4.0: the FDD Synth Duo (FDDSynthPro)
+
+Built on 18 Nov 2026 in SynthMinder branch `fdd-duo` (PR MaverickUK/SynthMinder#3) and FDD Synth Duo 0.25.0-dev.1 (FDDSynthPro branch `synthminder-mailbox`): the reserved cylinder of [docs/fdd-channel.md](docs/fdd-channel.md), so it works with one drive or two. The mock-ups are on the [Floppy tab canvas](https://claude.ai/artifact/B5nTmhbA4wwChe4Vxqzz7z).
+
+- [x] The Duo's mailbox at cylinder 82 (`MailboxSource`, `duo_commands`), host-tested with its virtual PC: the reply on the first revolution at the board's write costs, at 500 and 250 kbit/s; write-protect released at cylinder 82; a hello from power-on, so finding it only reads
+- [x] `FLOPPY.PAS`: INT 13h, SMARTDRV told to forget its floppy reads, DOS told of disk changes; the Floppy tab, the Duo's settings, `/FDA=` `/FDB=` `/FDEJECT=` `/FDPACK=` `/FDVOL=`; the pretend Duo in `/DEMO`; the model and demo unit-tested
+- [ ] `SYNMIND.EXE` built by CI, and the Floppy tab looked at in DOSBox-X (`/DEMO`, `/DUMP=FLOPPY`)
+- [ ] **On a PC with the Duo** (the Evesham): found on A:, an exchange's time, a disk swapped and DOS reading the new one (`DIR A:` straight after), two drives, a write-protected disk, SMARTDRV loaded. The firmware has never run on hardware yet
+- [ ] BIOSes that check the cylinder against their drive table and refuse 82: program the controller directly (ports 3F0h-3F7h, DMA channel 2)
+- [ ] The mailbox with no disk in (the controller sees no index): today ejecting the mailbox's drive leaves SynthMinder without the Duo until a disk is in
+- [ ] Whether the synth should play the seek out to cylinder 82 and back on every exchange
+- [ ] A GameMinder floppy per game (`SYNMIND /FDA=`), as with CDs
+
 ## Later
 
 - Themes (GameMinder's `THEMES.TXT`), 43/50-line screens
@@ -57,4 +70,4 @@ The test disk is `SYNTHMIN.IMG` on the Bay's card (FreeDOS, `SYNMIND.EXE` from t
 - The rest of the Bay's settings, shown and then changed with a warning where the PC must be right for them: the bus program, DMA, the mode, the geometry (show only)
 - GameMinder: a CD image per game, put in the Bay's drive (`SYNMIND /DISC=`) before the game starts
 - The synth's model (`$HDM`) and the Bay's seek timing shown together
-- **FDD Synth Duo**: a third tab. The floppy cable carries no commands, so SynthMinder would talk to it through a mailbox in sectors: a reserved cylinder past the end of the disk (on whichever drive the Duo serves, whatever disk is in), or a virtual control drive B when that slot is free; a few tenths of a second an exchange. Ideas, and what to settle first: [docs/fdd-channel.md](docs/fdd-channel.md). To design with FDDSynthPro
+- **FDD Synth Duo**: the Floppy tab, below (0.4.0)

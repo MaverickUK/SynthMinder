@@ -1,8 +1,8 @@
 # SynthMinder
 
-## See and change your HDD Synth and IDE Synth Bay from DOS
+## See and change your HDD Synth, IDE Synth Bay and FDD Synth Duo from DOS
 
-SynthMinder runs on the DOS PC an [IDE Synth Bay](https://github.com/MaverickUK/HDDSynthPro) is fitted to. It shows how the Bay and the [HDD Synth](https://github.com/MaverickUK/HDDSynth_Native) behind it are set up (the synth's sample packs, volume and balance, the Bay's disk and CD-ROM images), and changes what can be changed: the synth's pack, volume and balance, the CD in the Bay's CD-ROM drive, and the Bay's hard disk for the next power-on.
+SynthMinder runs on the DOS PC an [IDE Synth Bay](https://github.com/MaverickUK/HDDSynthPro) is fitted to. It shows how the Bay and the [HDD Synth](https://github.com/MaverickUK/HDDSynth_Native) behind it are set up (the synth's sample packs, volume and balance, the Bay's disk and CD-ROM images), and changes what can be changed: the synth's pack, volume and balance, the CD in the Bay's CD-ROM drive, and the Bay's hard disk for the next power-on. With an [FDD Synth Duo](https://github.com/MaverickUK/FDDSynthPro) on the floppy cable, it also changes the disk in each of its drives, its sample pack and its volume.
 
 It's [GameMinder](https://github.com/MaverickUK/GameMinder)'s sibling: the same PathMinder-style screen and colours.
 
@@ -15,6 +15,8 @@ It's [GameMinder](https://github.com/MaverickUK/GameMinder)'s sibling: the same 
 ## How it works
 
 SynthMinder finds the Bay on the PC's IDE bus and talks to it through a command of its own. The Bay answers for itself, and passes the synth's part on over the Synth Link, the wire between the two. The messages are the same ones the HDD Synth's USB companion app uses. Details: [docs/protocol.md](docs/protocol.md).
+
+The FDD Synth Duo can't take a command: the floppy cable carries only pulses and levels. So SynthMinder writes its request to a sector at cylinder 82, past the end of an 80-track disk, and reads the Duo's reply from the same track, through the BIOS. The Duo serves that cylinder itself and never touches the disk's image. An exchange takes about half a second. Details: FDDSynthPro's [docs/synthminder.md](https://github.com/MaverickUK/FDDSynthPro/blob/synthminder-mailbox/docs/synthminder.md).
 
 It needs plain DOS: under Windows, Windows' own disk driver owns the IDE ports. Boot to the command prompt first.
 
@@ -33,10 +35,13 @@ And for batch files, run in the order given, with no screen:
 SYNMIND /DISC=QUAKE.ISO      put a CD image in the Bay's CD-ROM drive (/DISC=- takes it out)
 SYNMIND /PACK=3              play a sample pack, by number, folder or name (/PACK=fdb05)
 SYNMIND /VOL=60 /BAL=50      the synth's volume and balance, 0-100
+SYNMIND /FDA=GAMES.IMG       a disk image into the FDD Synth Duo's A: (/FDB= into its B:)
+SYNMIND /FDEJECT=A           take the disk out of the Duo's A: (or B)
+SYNMIND /FDPACK=2 /FDVOL=60  the Duo's sample pack (number or name) and volume
 SYNMIND /Q ...               no messages, just the ERRORLEVEL
 ```
 
-The ERRORLEVEL: 0 done, 1 a bad option, 2 no Bay found (or it didn't answer), 3 refused (no such image or pack, no CD-ROM drive set up), 4 no HDD Synth on the Synth Link. A game's batch file can start with `SYNMIND /DISC=QUAKE.ISO /Q`, so the right CD is in the drive before the game asks for it.
+The ERRORLEVEL: 0 done, 1 a bad option, 2 no Bay found (or it didn't answer), 3 refused (no such image or pack, no CD-ROM drive set up), 4 no HDD Synth on the Synth Link, 5 no FDD Synth Duo. `/FDA=` waits until the disk is in, so a batch file can use the drive straight after: `SYNMIND /FDA=MONKEY1.IMG /Q`, then `A:`. A game's batch file can start with `SYNMIND /DISC=QUAKE.ISO /Q`, so the right CD is in the drive before the game asks for it.
 
 | Key | |
 |---|---|

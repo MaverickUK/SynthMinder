@@ -1,6 +1,6 @@
 # Talking to the FDD Synth Duo over the floppy cable: ideas
 
-**Status: ideas, for later.** Nothing is built. To design with [FDDSynthPro](https://github.com/MaverickUK/FDDSynthPro) (the FDD Synth Duo) before SynthMinder grows its third tab.
+**Status: the reserved cylinder is built** (SynthMinder's Floppy tab, branch `fdd-duo`; the Duo's mailbox, FDDSynthPro branch `synthminder-mailbox`, 0.25.0-dev.1; its reference is FDDSynthPro's [docs/synthminder.md](https://github.com/MaverickUK/FDDSynthPro/blob/synthminder-mailbox/docs/synthminder.md)). Not yet tried on a PC. This page keeps the thinking that chose it, and what's still to settle.
 
 ## The problem
 

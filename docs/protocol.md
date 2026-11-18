@@ -103,6 +103,28 @@ As console `E`: the file is rewritten with that one setting changed, and it take
 
 A request that isn't a valid sentence: `$SBK,1,REQUEST,ERR,invalid`. One the Bay doesn't know: `$SBK,1,<its first field>,ERR,unknown`. Values never contain `,`, `*` or `$`: the Bay replaces them with `_`, as the synth does in pack names.
 
+## The FDD Synth Duo: sentences over the floppy cable
+
+*Built: FDD Synth Duo 0.25.0-dev.1 (FDDSynthPro, branch `synthminder-mailbox`). The reference is its [`docs/synthminder.md`](https://github.com/MaverickUK/FDDSynthPro/blob/synthminder-mailbox/docs/synthminder.md).*
+
+The Duo takes no command: SynthMinder goes through its **mailbox at cylinder 82**, head 0, with the BIOS (`FLOPPY.PAS`). It writes the request to sector 1 (INT 13h, AH=03h) and reads the reply from sectors 5-9 (AH=02h), again until they carry the request's sequence number. The sectors are the same 512-byte SMND sectors as the IDE command's, but a reply has up to five of them in one read.
+- **Finding it only reads.** The reply sectors hold `$FDK,1,HELLO,OK,` (sequence 0) from power-on. A real drive's disk has no track 82, so SynthMinder never writes to one.
+- **SMARTDRV** caches the BIOS's floppy reads too, so SynthMinder has it forget them (INT 2Fh, AX=4A10h, BX=2) before each read of a reply.
+- **Disk changes:** before a swap, DOS writes out its buffers (INT 21h, AH=0Dh). After one, or when SynthMinder's own INT 13h call was the first to hear of a change (status 06h), DOS is told to rebuild the drive's parameter block (INT 21h, AH=32h, its flag byte set to FFh), so it reads the new disk.
+
+| Request | Reply |
+|---|---|
+| `$FDQ,1,STATUS` | `$FDV,1,<key>,<value>`: `firmware`, `drives` (`A`, `AB`), `mailbox`, `volume`, `pack`, `pack_index`, and per drive (`a_`, `b_`) `disk` (`-` for none), `kb`, `format`, `cylinder`, `motor`, `protect` |
+| `$FDQ,1,FILES,<from>` | `$FDF,1,<index>,<count>,<name>,<KB>,<kind>` from image `<from>`, as many as fit; SynthMinder asks again from the next. Kind `I` sectors, `H` flux (HFE), `A` Amiga |
+| `$FDQ,1,PACKS` | `$FDP,1,<index>,<count>,<name>` |
+| `$FDQ,1,SETTINGS` | `$FDS,1,<key>,<next>,<now>`: `drive`, `device0`, `device1` |
+| `$FDC,1,INSERT,<A\|B>,<name>` | `$FDK,1,INSERT,OK,`; the swap of the mailbox's own drive waits until the head leaves cylinder 82 (SynthMinder seeks to cylinder 0 after it) |
+| `$FDC,1,EJECT,<A\|B>` | `$FDK,1,EJECT,OK,` |
+| `$FDC,1,PACK,<index>`, `$FDC,1,VOL,<0-100>` | `$FDK,1,PACK,...`, `$FDK,1,VOL,...` |
+| `$FDC,1,SET,<key>,<value>` | `$FDK,1,SET,...`: `drive` (`a`, `b`, `a,b`), `device0`, `device1` (an image, or `-`) |
+
+Reasons for `ERR`: `notfound`, `nodrive`, `busy`, `empty`, `range`, `key`, `value`, `card`; `$FDK,1,REQUEST,ERR,invalid` and `$FDK,1,<first word>,ERR,unknown` as the Bay's.
+
 ## What the firmware needed
 
 *Built: IDE Synth Bay 0.36.0-dev.1 (HDDSynthPro, branch `synthminder`) and HDD Synth 0.25.0 (HDDSynth_Native, branch `synthminder-link`). The firmware's limits and differences from this draft are in the reference copy. In short: a CD-ROM alone (`device0 = cdrom`) refuses 8Dh; a reply holds up to about 34 packs; SET can also answer `card`.*
@@ -114,4 +136,4 @@ A request that isn't a valid sentence: `$SBK,1,REQUEST,ERR,invalid`. One the Bay
 
 **HDD Synth** (HDDSynth_Native): answer `$HDQ` and `$HDC` arriving on the link UART (J6) as it does on USB, with the replies sent back on the link's TX (J6 pin 4, the wire that carries `$HDM`). Today `runHostCommand` replies only through `usbhost::send`.
 
-**FDD Synth Duo:** not yet. The floppy bus has no spare command, so it needs a way of its own; see the roadmap.
+**FDD Synth Duo** (FDDSynthPro): the mailbox at cylinder 82 above, built in 0.25.0-dev.1 (branch `synthminder-mailbox`), host-tested with a virtual PC; not yet tried on a PC.
