@@ -37,7 +37,7 @@ The HDD Synth: its sample pack, volume and balance
 | Synth balance | `<` `>` | at once |
 | Synth pack | Enter on a pack | at once (the synth spins the new pack up: about a second) |
 | CD-ROM disc | Enter on a CD image; `E` ejects | at once, as if the disc had been changed; with a confirmation |
-| The hard disk (device 0) | Enter on a disk image | **from the next power-on**, with a confirmation: DOS is running from the current one, so it can't change underneath it. SynthMinder shows it as *Next boot* until then |
+| The hard disk (device 0) | Enter on a disk image | **from the PC's next reset** (the reset button or power-on; IDE Synth Bay 0.36.0-dev.4: older firmware, the Bay's next start), with a confirmation: DOS is running from the current one, so it can't change underneath it. SynthMinder shows it as *Next boot* until then |
 | The Bay's other settings | not in version 1 | they all apply at a restart, and most need knowing the PC (the bus program, DMA): later, with care |
 
 SynthMinder never restarts the Bay: the PC is running from it.

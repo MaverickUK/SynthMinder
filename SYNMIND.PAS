@@ -46,7 +46,7 @@ const
   MenuCaptions: array[0..MenuCount - 1] of string[8] = ('Synth', 'Bay', 'Floppy', 'Settings', 'Refresh', 'Exit');
   MenuHints: array[0..MenuCount - 1] of string[78] = (
     'The HDD Synth: its sample pack, volume and balance',
-    'The Bay''s SD card: change the CD, or the hard disk for the next power-on',
+    'The Bay''s SD card: change the CD, or the hard disk for the PC''s next reset',
     'The FDD Synth Duo: its disks and its sound',
     'The Bay''s and the Duo''s settings: changes take effect from the next power-on',
     'Ask the Bay, the synth and the Duo again',
@@ -511,7 +511,7 @@ begin
     end
     else begin
       RightLine(y, 'Enter makes it the hard disk from the', ColorNote, ColorBackground); inc(y);
-      RightLine(y, 'next power-on. Until then DOS keeps', ColorNote, ColorBackground); inc(y);
+      RightLine(y, 'PC''s next reset. Until then DOS keeps', ColorNote, ColorBackground); inc(y);
       RightLine(y, 'running from ' + BayValue('device0') + '.', ColorNote, ColorBackground); inc(y);
     end;
     RightGap(y);
@@ -1288,7 +1288,7 @@ const
     'Up/Down     move through the list',
     'Enter       on Synth: play the highlighted pack',
     '            on Bay: put a CD image in the CD-ROM drive, or',
-    '            make a disk image the hard disk at next power-on',
+    '            make a disk image the hard disk at the next reset',
     '            on Floppy: put the disk in the Duo''s drive now,',
     '            or play its sample pack',
     '            on Settings: change the highlighted setting',
@@ -1299,7 +1299,7 @@ const
     'Esc         exit to DOS',
     '',
     'The Bay''s hard disk can''t change while DOS runs from it,',
-    'so a new one waits for the next power-on. A floppy changes',
+    'so a new one waits for the reset button. A floppy changes',
     'at once; each change to the Duo takes a second or so, as',
     'it goes through the disk (cylinder 82, past the end).');
 var
@@ -1455,9 +1455,9 @@ begin
       Done(true, 'Already the hard disk');
       exit;
     end;
-    if not Confirm('Next boot''s hard disk', 'Make ' + name + ' the hard disk from the next power-on?',
+    if not Confirm('Next boot''s hard disk', 'Make ' + name + ' the hard disk from the next reset?',
                    'DOS keeps running from ' + BayValue('device0') + ' until then.', 'Use it') then exit;
-    if Command('SBC,1,SET,device0,' + name, message) then Done(true, name + ' from the next power-on')
+    if Command('SBC,1,SET,device0,' + name, message) then Done(true, name + ' from the next reset')
     else Done(false, message);
   end;
   RefreshBay;
