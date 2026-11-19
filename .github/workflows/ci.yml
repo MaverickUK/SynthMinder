@@ -120,7 +120,7 @@ jobs:
         run: |
           cd build/dos
           printf '%s\r\n' 'TESTS.EXE > TESTS.TXT' 'SYNMIND.EXE /V > VER.TXT' \
-            'SYNMIND.EXE /DEMO /STATUS > STATUS.TXT' 'SYNMIND.EXE /DEMO /DUMP=SYNTH' > SESSION.BAT
+            'SYNMIND.EXE /DEMO /STATUS > STATUS.TXT' 'SYNMIND.EXE /DEMO /DUMP=SOUND' > SESSION.BAT
           timeout 120 dosbox -c "mount c ." -c "c:" -c "CALL SESSION.BAT" -c "exit" > /dev/null 2>&1 \
             || echo "DOSBox timed out"
 
@@ -137,7 +137,7 @@ jobs:
           grep -q " 0 failed" TESTS.TXT
           grep -q "SynthMinder v$(../../scripts/check-version.sh)" VER.TXT
           grep -q "Voice coil 1997" STATUS.TXT
-          python3 ../../scripts/screen.py SCREEN.BIN | grep -q "Sample packs"
+          python3 ../../scripts/screen.py SCREEN.BIN | grep -q "HDD Synth packs"
 
   package:
     name: Package

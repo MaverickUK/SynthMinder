@@ -20,9 +20,10 @@ It runs Turbo Pascal inside DOSBox-X without a window (needs `dosbox-x`, and Tur
 | `TESTS.TXT` | the unit tests' results |
 | `STATUS.TXT` | `SYNMIND /DEMO /STATUS` |
 | `NOBAY.TXT` | `SYNMIND` with no Bay (DOSBox-X has none) |
-| `SYNTH.BIN`, `BAY.BIN` | the demo's two screens, from `SYNMIND /DEMO /DUMP=SYNTH` and `/DUMP=BAY` |
+| `SOUND.BIN`, `FLOPPY.BIN`, `HARDDISK.BIN`, `CDROM.BIN`, `SETTINGS.BIN` | the demo's tabs, from `SYNMIND /DEMO /DUMP=SOUND` and so on |
+| `KEYS.BIN`, `KEYS1.BIN` to `KEYS5.BIN` | after a scripted session at the keyboard: the screen it left, then each tab (`/DUMP=EXIT`), which the build checks for the session's changes |
 
-To see a screen: `scripts/screen.py build/tp7/SYNTH.BIN` (text), or with `--html` (in its colours).
+To see a screen: `scripts/screen.py build/tp7/SOUND.BIN` (text), or with `--html` (in its colours).
 
 ## The README's demo
 

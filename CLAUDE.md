@@ -27,7 +27,7 @@ The owner is an experienced software architect (C#/.NET, TypeScript, Python), wh
 
 ## Building and testing
 
-- `scripts/build.sh` builds `SYNMIND.EXE` and `TESTS.EXE` with Turbo Pascal 7 in DOSBox-X (no window), runs the tests, `/V`, `/DEMO /STATUS`, and dumps the demo's two screens; `scripts/screen.py build/tp7/SYNTH.BIN` prints one. Look at the screens after any change to the drawing code.
+- `scripts/build.sh` builds `SYNMIND.EXE` and `TESTS.EXE` with Turbo Pascal 7 in DOSBox-X (no window), runs the tests, `/V`, `/DEMO /STATUS`, dumps the demo's five tabs, and checks a scripted session at the keyboard; `scripts/screen.py build/tp7/SOUND.BIN` prints one. Look at the screens after any change to the drawing code.
 - `--run` opens the demo in a DOSBox-X window.
 - CI (`.github/workflows/ci.yml`): the unit tests with Free Pascal on Linux, the DOS build with an FPC i8086-msdos cross compiler, a smoke test in DOSBox, and a release zip. Tag `vX.Y.Z` matching `VERSION.INC` for a draft release.
 

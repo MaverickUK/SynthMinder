@@ -20,6 +20,9 @@ All notable changes to SynthMinder are documented here. The format is based on [
 - Words for the Bay's `key` and `card` reasons (a setting it can't change; HDDSYNTH.INI it couldn't write).
 
 ### Changed
+- **A tab for each thing that changes:** Sound, Floppy, Hard disk, CD-ROM and Settings, in place of Synth, Bay, Floppy and Settings, so each list holds one kind of thing and Enter does one thing on it. Sound has both synths' packs (the HDD Synth's, then the Duo's); `+` `-` and `<` `>` act on the synth whose pack is highlighted. Floppy has only the Duo's disks. The Bay's hard disk and CD-ROM images have a tab each. Settings is grouped by device (the HDD Synth, the Bay, the Duo), and shows the highlighted device's firmware and details, which have left the everyday tabs. The mock-ups are on the design canvas.
+- One mark, `►`, for what's in use (the pack playing, the disk DOS runs from, the disc in the drive), and `recorded` and `modelled` in words: the lines explaining the marks are gone. Refresh is the `R` key, no longer on the menu; `+` `-` `<` `>` work on the Sound tab only.
+- `/DUMP=` takes `SOUND`, `FLOPPY`, `HARDDISK`, `CDROM` or `SETTINGS`; `/DUMP=EXIT` also saves each tab after a scripted session (`KEYS1.BIN` to `KEYS5.BIN`), and `scripts/build.sh` checks the session's changes on them.
 - No Bay found now ends with ERRORLEVEL 2 (it was 1, now a bad option's), as does a Bay that doesn't answer.
 - The protocol's reference copy is HDDSynthPro's `docs/synthminder-protocol.md`, now that the firmware implements it (IDE Synth Bay 0.36.0-dev.1, HDD Synth 0.25.0).
 

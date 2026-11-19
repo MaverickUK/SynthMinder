@@ -35,14 +35,13 @@ done
 # Each key is pressed 1.2 s apart, "," adds an extra pause. Keep the autotype
 # command under 255 characters, or DOSBox-X ignores the end of it, and don't
 # start it with ",": every key after the first was lost (-w waits instead):
-#   the Synth tab: up to another pack and play it, volume up, balance right;
-#   help (F1); the Bay tab (Tab): End to the last CD image, Enter and confirm
-#   to put it in the CD-ROM drive, E and confirm to eject it; the Floppy tab
-#   (Tab): MONKEY1.IMG into the Duo's B: (the B key), then E and confirm to
-#   take it out; the Settings tab (Tab): seek timing set to fdb05 from its
-#   chooser, write-behind's question (with what it trades) left with Esc;
-#   Esc exits
-keys="up up up enter , , equals equals period , f1 , , esc , tab , end enter , enter , e , enter , tab , down down down down , b , , e , enter , , tab , down down , enter , down down down down , enter , , down down , enter , , esc , , esc"
+#   the Sound tab: up to another HDD Synth pack and play it, volume up, balance
+#   right; help (F1); down to the Duo's other pack and play it; the Floppy tab
+#   (Tab): MONKEY1.IMG into the Duo's B: (the B key); past the Hard disk tab to the
+#   CD-ROM tab: down to QUAKE.ISO, Enter and confirm to put it in the drive, E and
+#   confirm to eject it; the Settings tab: seek timing set to fdb05 from its
+#   chooser, write-behind's question (with what it trades) left with Esc; Esc exits
+keys="up up up enter , equals equals period , f1 , esc down down down down down enter , tab down down down down , b , , tab tab down enter , enter , e , enter , tab enter down down down down enter , down down down down enter , esc , esc"
 
 for attempt in 1 2 3; do
   rm -rf "$work/c" "$work/capture"

@@ -6,8 +6,11 @@
 #   build/tp7/BUILD.LOG                 the compiler's output
 #   build/tp7/TESTS.TXT                 the unit tests' results
 #   build/tp7/STATUS.TXT                SYNMIND /DEMO /STATUS
-#   build/tp7/SYNTH.BIN, BAY.BIN        the demo's screens (scripts/screen.py shows them)
-#   build/tp7/KEYS.BIN                  the screen after a scripted session at the keyboard
+#   build/tp7/SOUND.BIN, FLOPPY.BIN,    the demo's tabs (scripts/screen.py shows them)
+#     HARDDISK.BIN, CDROM.BIN,
+#     SETTINGS.BIN
+#   build/tp7/KEYS.BIN                  the screen after a scripted session at the keyboard,
+#     KEYS1.BIN to KEYS5.BIN            and each tab then
 #
 # Usage: scripts/build.sh [--run]     --run: then open the demo in a DOSBox-X window
 #
@@ -40,12 +43,12 @@ tp_dir=${TP_DIR:-/c/TPWDB}
 rm -rf "$out"
 mkdir -p "$out"
 
-# A session at the keyboard, saved as KEYS.BIN when it exits. On the Bay tab: QUAKE.ISO
-# into the CD-ROM drive, then DOSBENCH.IMG for the next boot (each confirmed). On the
-# Synth tab: the pack above the one playing (Voice coil 1991), volume up twice (to 70)
-# and balance right once (to 60)
-keys="right down down down down down down down enter enter up up up up up up enter enter"
-keys="$keys left up enter equals equals period esc"
+# A session at the keyboard, saved as KEYS.BIN when it exits (and each tab as KEYS1.BIN
+# to KEYS5.BIN). On the Sound tab: the pack above the one playing (Voice coil 1991),
+# volume up twice (to 70) and balance right once (to 60). Past Floppy to the Hard disk
+# tab: up from the disk DOS runs from to DOSBENCH.IMG, for the next reset. On the
+# CD-ROM tab: down from the disc in the drive to QUAKE.ISO, into the drive. Each confirmed
+keys="up enter equals equals period right right up up up enter enter right down enter enter esc"
 
 # Compile everything (/B) so stale units are never used. S: is the repository, read only
 tpc='T:\BIN\TPC.EXE /B /Q /EC:\ /US:\;T:\UNITS /IS:\'
@@ -65,10 +68,16 @@ conf="$out/dosbox.conf"
     'TESTS.EXE > TESTS.TXT' \
     'SYNMIND.EXE /V > VERSION.TXT' \
     'SYNMIND.EXE /DEMO /STATUS > STATUS.TXT' \
-    'SYNMIND.EXE /DEMO /DUMP=SYNTH' \
-    'copy SCREEN.BIN SYNTH.BIN > NUL' \
-    'SYNMIND.EXE /DEMO /DUMP=BAY' \
-    'copy SCREEN.BIN BAY.BIN > NUL' \
+    'SYNMIND.EXE /DEMO /DUMP=SOUND' \
+    'copy SCREEN.BIN SOUND.BIN > NUL' \
+    'SYNMIND.EXE /DEMO /DUMP=FLOPPY' \
+    'copy SCREEN.BIN FLOPPY.BIN > NUL' \
+    'SYNMIND.EXE /DEMO /DUMP=HARDDISK' \
+    'copy SCREEN.BIN HARDDISK.BIN > NUL' \
+    'SYNMIND.EXE /DEMO /DUMP=CDROM' \
+    'copy SCREEN.BIN CDROM.BIN > NUL' \
+    'SYNMIND.EXE /DEMO /DUMP=SETTINGS' \
+    'copy SCREEN.BIN SETTINGS.BIN > NUL' \
     'SYNMIND.EXE > NOBAY.TXT' \
     "autotype -w 2 -p 0.3 $keys" \
     'SYNMIND.EXE /DEMO /DUMP=EXIT' \
@@ -92,11 +101,15 @@ echo "--- version"; show "$out/VERSION.TXT"
 echo "--- without a Bay"; show "$out/NOBAY.TXT"
 grep -q " 0 failed" "$out/TESTS.TXT" || { echo "Tests failed" >&2; exit 1; }
 
-# The scripted session's changes, on the screen it left
-session=$(PYTHONIOENCODING=utf-8 "$python" "$repo/scripts/screen.py" "$out/KEYS.BIN" 2> /dev/null || true)
+# The scripted session's changes, on each tab when it ended
+session=
+for f in KEYS1 KEYS2 KEYS3 KEYS4 KEYS5; do
+  session+=$(PYTHONIOENCODING=utf-8 "$python" "$repo/scripts/screen.py" "$out/$f.BIN" 2> /dev/null || true)
+  session+=$'\n'
+done
 failed=
-for expect in "Volume .* 70 " "L .* R 60 " "Pack        Voice coil 1991" \
-              "Device 1    CD-ROM: QUAKE.ISO" "Next boot   DOSBENCH.IMG"; do
+for expect in "Volume .* 70 " "L .* R 60 " "Playing     Voice coil 1991" \
+              "Disc        QUAKE.ISO" "Next reset  DOSBENCH.IMG"; do
   grep -q "$expect" <<< "$session" || { echo "Keyboard session: no '$expect'" >&2; failed=1; }
 done
 if [ -n "$failed" ]; then

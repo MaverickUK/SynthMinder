@@ -36,43 +36,48 @@ uses
 const
   ApplicationName = 'SynthMinder v' + AppVersion;
 
-  MenuSynth = 0;
-  MenuBay = 1;
-  MenuFloppy = 2;
-  MenuSettings = 3;
-  MenuRefresh = 4;
+  { The tabs, one for each thing that changes, the drives in DOS's order (A:, C:, D:) }
+  MenuSound = 0;
+  MenuFloppy = 1;
+  MenuHardDisk = 2;
+  MenuCdRom = 3;
+  MenuSettings = 4;
   MenuExit = 5;
   MenuCount = 6;
-  MenuCaptions: array[0..MenuCount - 1] of string[8] = ('Synth', 'Bay', 'Floppy', 'Settings', 'Refresh', 'Exit');
+  MenuCaptions: array[0..MenuCount - 1] of string[9] = ('Sound', 'Floppy', 'Hard disk', 'CD-ROM', 'Settings', 'Exit');
   MenuHints: array[0..MenuCount - 1] of string[78] = (
-    'The HDD Synth: its sample pack, volume and balance',
-    'The Bay''s SD card: change the CD, or the hard disk for the PC''s next reset',
-    'The FDD Synth Duo: its disks and its sound',
-    'The Bay''s and the Duo''s settings: changes take effect from the next power-on',
-    'Ask the Bay, the synth and the Duo again',
+    'The synths'' sound: the HDD Synth''s and the Duo''s sample packs and volume',
+    'The FDD Synth Duo''s drives: change a disk now, as if by hand',
+    'The Bay''s hard disk: choose the image the PC starts from at its next reset',
+    'The Bay''s CD-ROM drive: change its disc now, as if by hand',
+    'Each device''s settings and details: changes take effect from the next power-on',
     'Exit to DOS');
+  { /DUMP= names for the tabs }
+  TabNames: array[0..MenuExit - 1] of string[8] = ('SOUND', 'FLOPPY', 'HARDDISK', 'CDROM', 'SETTINGS');
 
-  { The Settings tab's rows: a heading (no key), or a setting the Bay lists
-    with $SBQ,1,SETTINGS, or (fd:) the Duo with $FDQ,1,SETTINGS. The Bay's
-    show when it lists settings, the Duo's when it does }
-  SettingRowCount = 19;
-  ShownFirstRow = 11;  { The bus's: shown only, as the Bay gives them (0.36.0-dev.2) }
-  DuoFirstRow = 16;
+  { The Settings tab's rows: a heading (no key; a sub-heading starts with a
+    space), or a setting the Bay lists with $SBQ,1,SETTINGS, or (fd:) the
+    Duo with $FDQ,1,SETTINGS. Grouped by device: the HDD Synth's (which the
+    Bay keeps), the Bay's, the Duo's. The Bay's show when it lists
+    settings, the Duo's when it does }
+  SettingRowCount = 18;
+  SynthLastRow = 3;    { The HDD Synth's rows: 1 to here }
+  ShownFirstRow = 10;  { The bus's: shown only, as the Bay gives them (0.36.0-dev.2) }
+  DuoFirstRow = 15;
   SettingRows: array[1..SettingRowCount] of record
     Key: string[13];
-    Caption: string[16];
+    Caption: string[20];
   end = (
-    (Key:''; Caption:'Second drive'),
-    (Key:'device1'; Caption:'Device 1'),
-    (Key:'cdrom'; Caption:'CD at power-on'),
     (Key:''; Caption:'HDD Synth'),
     (Key:'seek_timing'; Caption:'Seek timing'),
     (Key:'activity_link'; Caption:'Synth Link'),
-    (Key:''; Caption:'Speed and safety'),
+    (Key:''; Caption:'IDE Synth Bay'),
+    (Key:'device1'; Caption:'Device 1'),
+    (Key:'cdrom'; Caption:'CD at power-on'),
     (Key:'write_behind'; Caption:'Write-behind'),
     (Key:'read_ahead'; Caption:'Read-ahead'),
     (Key:'sd_high_speed'; Caption:'SD card speed'),
-    (Key:''; Caption:'The bus, shown only'),
+    (Key:''; Caption:' The bus, shown only'),
     (Key:'bus'; Caption:'Bus program'),
     (Key:'dma'; Caption:'DMA'),
     (Key:'mode'; Caption:'Mode'),
@@ -96,32 +101,48 @@ const
 
   MaxChoices = MaxDuoFiles + 2;
 
-  { Rows of the Bay's list that aren't files }
-  RowHardDisks = -1;
-  RowCdRoms = -2;
+  { A list's rows are codes: an item (0 and up, a pack's or an image's
+    index), the second kind of item (RowSecond - index: the Duo's packs on
+    the Sound tab), or a heading or note (-1 to -9), which the highlight
+    passes over }
+  MaxListRows = MaxDuoFiles + 4;  { The longest: the Duo's images and their headings }
+  RowSecond = -10;
+  RowNone = -9;        { No item highlighted }
 
-  { Rows of the Floppy tab's list that aren't images: headings, and the
-    packs (RowFirstPack - index) }
+  { The Sound tab's headings and notes }
+  RowSynthHeading = -1;
+  RowDuoHeading = -2;
+  RowGap = -3;
+  RowNoSynth = -4;
+  RowNoDuo = -5;
+
+  { The Floppy tab's headings }
   Row35 = -1;
   Row525 = -2;
   RowOther = -3;
-  RowPacks = -4;
-  RowFirstPack = -10;
+
+  { The Hard disk and CD-ROM tabs' headings }
+  RowHardDisks = -1;
+  RowCdRoms = -2;
+
+type
+  TList = record
+    Rows: array[0..MaxListRows - 1] of integer;
+    Count: integer;
+    Sel: integer;      { The highlighted row }
+    Top: integer;      { The first row shown }
+  end;
+  PList = ^TList;
+  TRowStyle = (rsHeading, rsNote, rsItem, rsInUse);
 
 var
   menuIndex:integer;
-  tab:integer;              { MenuSynth, MenuBay or MenuSettings: what the panels show }
+  tab:integer;              { MenuSound to MenuSettings: what the panels show }
   setSel:integer;           { The Settings tab's row, 1..SettingRowCount, never a heading }
   choiceValue:array[1..MaxChoices] of string[47];  { The chooser's choices }
   choiceWords:array[1..MaxChoices] of string[40];
   choiceCount:integer;
-  packSel,packTop:integer;
-  bayRows:array[0..MaxFiles + 1] of integer; { File index, or RowHardDisks/RowCdRoms }
-  bayRowCount:integer;
-  baySel,bayTop:integer;
-  fdRows:array[0..MaxDuoFiles + MaxDuoPacks + 3] of integer; { Image index, a heading, or a pack }
-  fdRowCount:integer;
-  fdSel,fdTop:integer;
+  soundList,fdList,hdList,cdList:TList;
   note:string;              { The result of the last change, in the bottom of the frame }
   noteGood:boolean;
   quit:boolean;
@@ -242,6 +263,32 @@ begin
   end;
 end;
 
+{ A field whose value stands out, e.g. the hard disk waiting for the reset }
+procedure RightValue(var y:byte; name, value:string; fore:byte);
+begin
+  if ( y >= FrameBottom ) then exit;
+  RightLine(y, PadRight(name, 12) + value, ColorText, ColorBackground);
+  WriteAt(RightX + 13, y, value, fore, ColorBackground);
+  inc(y);
+end;
+
+procedure RightNote(var y:byte; text:string);
+begin
+  if ( y >= FrameBottom ) then exit;
+  RightLine(y, text, ColorNote, ColorBackground);
+  inc(y);
+end;
+
+{ The left panel with nothing to list: a heading and why }
+procedure LeftMessage(heading, line1, line2:string);
+begin
+  LeftLine(PanelTop, heading, ColorHeadingText, ColorHeadingBack);
+  LeftLine(PanelTop + 1, '', ColorText, ColorBackground);
+  LeftLine(PanelTop + 2, line1, ColorDim, ColorBackground);
+  LeftLine(PanelTop + 3, line2, ColorDim, ColorBackground);
+  ClearLeft(PanelTop + 4, FrameBottom - 1);
+end;
+
 { The Bay's device 1, in words }
 function Device1Text:string;
 var
@@ -268,7 +315,7 @@ begin
   RightField(y, 'Firmware', firmware);
   if ( Backend = bkIde ) then RightField(y, 'Found as', DriveName(BayDrive));
   if ( length(BayValue('device0')) > 0 ) then RightField(y, 'Device 0', BayValue('device0'));
-  if ( length(BayValue('device0_next')) > 0 ) then RightField(y, 'Next boot', BayValue('device0_next'));
+  if ( length(BayValue('device0_next')) > 0 ) then RightField(y, 'Next reset', BayValue('device0_next'));
   RightField(y, 'Device 1', Device1Text);
   if ( length(BayValue('bus')) > 0 ) then RightField(y, 'Bus', BayValue('bus'));
   if ( length(BayValue('seek_timing')) > 0 ) then RightField(y, 'Seek timing', BayValue('seek_timing'));
@@ -285,243 +332,75 @@ begin
   end;
 end;
 
-{ ////////////////// Synth tab ////////////////// }
+{ ////////////////// Lists ////////////////// }
 
-function PackRows:integer;
+{ The rows a list shows: the panel's height }
+function ListRows:integer;
 begin
-  PackRows := FrameBottom - 3 - ( PanelTop + 1 ); { Leaves room for the key to the marks }
+  ListRows := FrameBottom - PanelTop;
 end;
 
-procedure KeepPackVisible;
+function Selectable(code:integer):boolean;
 begin
-  if ( packSel >= Synth.PacksKnown ) then packSel := Synth.PacksKnown - 1;
-  if ( packSel < 0 ) then packSel := 0;
-  if ( packSel < packTop ) then packTop := packSel;
-  if ( packSel >= packTop + PackRows ) then packTop := packSel - PackRows + 1;
-  if ( packTop < 0 ) then packTop := 0;
+  Selectable := ( code >= 0 ) or ( code <= RowSecond );
 end;
 
-procedure DrawSynthLeft;
+procedure ListAdd(var list:TList; code:integer);
+begin
+  if ( list.Count >= MaxListRows ) then exit;
+  list.Rows[list.Count] := code;
+  inc(list.Count);
+end;
+
+{ Move the highlight by `step` items, passing over headings and notes }
+procedure ListMove(var list:TList; step:integer);
 var
-  y:byte;
-  i:integer;
-  mark,kind:string;
+  next,dir:integer;
 begin
-  LeftRow(PanelTop, 'Sample packs', IntToStr(Synth.PacksKnown), ColorHeadingText, ColorHeadingBack);
-  y := PanelTop + 1;
-  if not Synth.Present then begin
-    LeftLine(y, '', ColorText, ColorBackground);
-    LeftLine(y + 1, 'No packs: the synth isn''t', ColorText, ColorBackground);
-    LeftLine(y + 2, 'answering', ColorText, ColorBackground);
-    ClearLeft(y + 3, FrameBottom - 1);
-    exit;
+  if ( step < 0 ) then dir := -1 else dir := 1;
+  while ( step <> 0 ) do begin
+    next := list.Sel;
+    repeat
+      next := next + dir;
+      if ( next < 0 ) or ( next >= list.Count ) then exit;
+    until Selectable(list.Rows[next]);
+    list.Sel := next;
+    step := step - dir;
   end;
-
-  KeepPackVisible;
-  for i := packTop to packTop + PackRows - 1 do begin
-    if ( i < Synth.PacksKnown ) then begin
-      if ( i = Synth.PackIndex ) then mark := ChPlaying + ' ' else mark := '  ';
-      if ( Synth.Packs[i].Kind in ['M', 'R'] ) then kind := Synth.Packs[i].Kind else kind := '';
-      if ( i = packSel ) and ( tab = menuIndex ) then
-        LeftRow(y, mark + PackName(i), kind, ColorHighlightText, ColorHighlightBack)
-      else
-        LeftRow(y, mark + PackName(i), kind, ColorText, ColorBackground);
-    end
-    else
-      LeftLine(y, '', ColorText, ColorBackground);
-    inc(y);
-  end;
-  ClearLeft(y, FrameBottom - 3);
-  LeftLine(FrameBottom - 2, ChPlaying + ' playing now', ColorNote, ColorBackground);
-  LeftLine(FrameBottom - 1, 'M modelled   R recorded', ColorNote, ColorBackground);
 end;
 
-procedure DrawSynthRight;
+{ The highlight on an item, and the first row shown keeping it in view }
+procedure ListKeepVisible(var list:TList);
+begin
+  if ( list.Sel >= list.Count ) then list.Sel := list.Count - 1;
+  if ( list.Sel < 0 ) then list.Sel := 0;
+  if ( list.Count > 0 ) and not Selectable(list.Rows[list.Sel]) then ListMove(list, 1);
+  if ( list.Sel < list.Top ) then list.Top := list.Sel;
+  { Show a heading above the first item under it }
+  if ( list.Top > 0 ) and ( list.Sel = list.Top ) and not Selectable(list.Rows[list.Top - 1]) then dec(list.Top);
+  if ( list.Sel >= list.Top + ListRows ) then list.Top := list.Sel - ListRows + 1;
+  if ( list.Top < 0 ) then list.Top := 0;
+end;
+
+{ The highlighted item's code, or RowNone }
+function ListSelected(var list:TList):integer;
+begin
+  ListSelected := RowNone;
+  if ( list.Sel >= 0 ) and ( list.Sel < list.Count ) then
+    if Selectable(list.Rows[list.Sel]) then ListSelected := list.Rows[list.Sel];
+end;
+
+{ Highlight the item `code`, if the list has it }
+procedure ListFind(var list:TList; code:integer);
 var
-  y:byte;
+  row:integer;
 begin
-  y := PanelTop;
-  RightHeading(y, 'HDD Synth');
-  if Synth.Present then begin
-    RightField(y, 'Firmware', Synth.Firmware);
-    RightField(y, 'State', StateText(Synth.State));
-    RightField(y, 'Pack', PackName(Synth.PackIndex));
-    RightField(y, 'Volume', VolumeBar(Synth.Volume));
-    RightField(y, 'Balance', BalanceBar(Synth.Balance));
-    RightField(y, 'Supercap', SupercapText);
-  end
-  else begin
-    RightField(y, 'Not answering', '');
-    if ( LastAck.Reason = 'nosynth' ) then
-      RightField(y, '', 'Is the Synth Link connected?');
-  end;
-  RightGap(y);
-  RightHeading(y, 'IDE Synth Bay');
-  BayFields(y);
-  ClearRight(y);
+  if not Selectable(code) then exit;
+  for row := 0 to list.Count - 1 do
+    if ( list.Rows[row] = code ) then list.Sel := row;
 end;
 
-{ ////////////////// Bay tab ////////////////// }
-
-procedure BuildBayRows;
-var
-  i:integer;
-  hasHard,hasCd:boolean;
-begin
-  bayRowCount := 0;
-  hasHard := false;
-  hasCd := false;
-  for i := 0 to Bay.FileCount - 1 do begin
-    if ( Bay.Files[i].Kind = KindHardDisk ) then hasHard := true;
-    if ( Bay.Files[i].Kind = KindCdRom ) then hasCd := true;
-  end;
-  if hasHard then begin
-    bayRows[bayRowCount] := RowHardDisks;
-    inc(bayRowCount);
-    for i := 0 to Bay.FileCount - 1 do
-      if ( Bay.Files[i].Kind = KindHardDisk ) then begin
-        bayRows[bayRowCount] := i;
-        inc(bayRowCount);
-      end;
-  end;
-  if hasCd then begin
-    bayRows[bayRowCount] := RowCdRoms;
-    inc(bayRowCount);
-    for i := 0 to Bay.FileCount - 1 do
-      if ( Bay.Files[i].Kind = KindCdRom ) then begin
-        bayRows[bayRowCount] := i;
-        inc(bayRowCount);
-      end;
-  end;
-end;
-
-function BayListRows:integer;
-begin
-  BayListRows := FrameBottom - 2 - PanelTop;
-end;
-
-{ Move the selection by a step, skipping the headings }
-procedure MoveBaySel(step:integer);
-var
-  next:integer;
-begin
-  if ( bayRowCount = 0 ) then exit;
-  next := baySel;
-  repeat
-    next := next + step;
-    if ( next < 0 ) or ( next >= bayRowCount ) then exit;
-  until bayRows[next] >= 0;
-  baySel := next;
-end;
-
-procedure KeepBayVisible;
-begin
-  if ( baySel >= bayRowCount ) then baySel := bayRowCount - 1;
-  if ( baySel < 0 ) then baySel := 0;
-  if ( bayRowCount > 0 ) and ( bayRows[baySel] < 0 ) then MoveBaySel(1);
-  if ( baySel < bayTop ) then bayTop := baySel;
-  { Show a heading above the first file under it }
-  if ( bayTop > 0 ) and ( bayRows[bayTop - 1] < 0 ) and ( baySel = bayTop ) then dec(bayTop);
-  if ( baySel >= bayTop + BayListRows ) then bayTop := baySel - BayListRows + 1;
-  if ( bayTop < 0 ) then bayTop := 0;
-end;
-
-function SelectedFile:integer;
-begin
-  SelectedFile := -1;
-  if ( baySel >= 0 ) and ( baySel < bayRowCount ) then SelectedFile := bayRows[baySel];
-end;
-
-{ 0 or 1 for a file in device 0 or the CD-ROM drive now, '' otherwise }
-function InUseMark(index:integer):string;
-begin
-  InUseMark := '  ';
-  if ( Bay.Files[index].Name = BayValue('device0') ) then InUseMark := '0 '
-  else if ( Bay.Files[index].Name = BayValue('disc') ) and ( BayValue('device1') = 'cdrom' ) then InUseMark := '1 ';
-end;
-
-procedure DrawBayLeft;
-var
-  y:byte;
-  i,row,count,kindCount:integer;
-  fore:byte;
-  heading:string;
-begin
-  BuildBayRows;
-  KeepBayVisible;
-  y := PanelTop;
-  if ( bayRowCount = 0 ) then begin
-    LeftLine(y, 'SD card', ColorHeadingText, ColorHeadingBack);
-    LeftLine(y + 1, '', ColorText, ColorBackground);
-    LeftLine(y + 2, 'No images on the card, or the', ColorText, ColorBackground);
-    LeftLine(y + 3, 'Bay didn''t list them', ColorText, ColorBackground);
-    ClearLeft(y + 4, FrameBottom - 1);
-    exit;
-  end;
-
-  for row := bayTop to bayTop + BayListRows - 1 do begin
-    if ( row >= bayRowCount ) then
-      LeftLine(y, '', ColorText, ColorBackground)
-    else if ( bayRows[row] < 0 ) then begin
-      if ( bayRows[row] = RowHardDisks ) then heading := 'Hard disk images' else heading := 'CD-ROM images';
-      kindCount := 0;
-      for i := 0 to Bay.FileCount - 1 do
-        if ( ( bayRows[row] = RowHardDisks ) and ( Bay.Files[i].Kind = KindHardDisk ) )
-           or ( ( bayRows[row] = RowCdRoms ) and ( Bay.Files[i].Kind = KindCdRom ) ) then inc(kindCount);
-      LeftRow(y, heading, IntToStr(kindCount), ColorHeadingText, ColorHeadingBack);
-    end
-    else begin
-      i := bayRows[row];
-      if ( row = baySel ) and ( tab = menuIndex ) then
-        LeftRow(y, InUseMark(i) + Bay.Files[i].Name, SizeText(Bay.Files[i].SizeKB),
-                ColorHighlightText, ColorHighlightBack)
-      else begin
-        if ( InUseMark(i) <> '  ' ) then fore := ColorHighlightText else fore := ColorText;
-        LeftRow(y, InUseMark(i) + Bay.Files[i].Name, SizeText(Bay.Files[i].SizeKB), fore, ColorBackground);
-      end;
-    end;
-    inc(y);
-  end;
-  ClearLeft(y, FrameBottom - 2);
-  LeftLine(FrameBottom - 1, '0 / 1 in device 0 / 1 now', ColorNote, ColorBackground);
-end;
-
-procedure DrawBayRight;
-var
-  y:byte;
-  i:integer;
-  inUse:string;
-begin
-  y := PanelTop;
-  i := SelectedFile;
-  if ( i >= 0 ) then begin
-    RightHeading(y, Bay.Files[i].Name);
-    if ( Bay.Files[i].Kind = KindCdRom ) then RightField(y, 'Kind', 'CD-ROM image')
-    else RightField(y, 'Kind', 'Hard disk image');
-    RightField(y, 'Size', SizeText(Bay.Files[i].SizeKB));
-    inUse := InUseMark(i);
-    if ( inUse = '0 ' ) then RightField(y, 'Now in', 'device 0, the hard disk')
-    else if ( inUse = '1 ' ) then RightField(y, 'Now in', 'the CD-ROM drive')
-    else RightField(y, 'Now in', 'nothing');
-    if ( Bay.Files[i].Name = BayValue('device0_next') ) then RightField(y, 'Next boot', 'device 0');
-    RightGap(y);
-    if ( Bay.Files[i].Kind = KindCdRom ) then begin
-      RightLine(y, 'Enter puts it in the CD-ROM drive now,', ColorNote, ColorBackground); inc(y);
-      RightLine(y, 'as if you changed the disc.', ColorNote, ColorBackground); inc(y);
-    end
-    else begin
-      RightLine(y, 'Enter makes it the hard disk from the', ColorNote, ColorBackground); inc(y);
-      RightLine(y, 'PC''s next reset. Until then DOS keeps', ColorNote, ColorBackground); inc(y);
-      RightLine(y, 'running from ' + BayValue('device0') + '.', ColorNote, ColorBackground); inc(y);
-    end;
-    RightGap(y);
-  end;
-  RightHeading(y, 'IDE Synth Bay');
-  BayFields(y);
-  ClearRight(y);
-end;
-
-{ ////////////////// Floppy tab ////////////////// }
+{ ////////////////// Words for the Duo ////////////////// }
 
 { As floppies are sized: 1.44 MB, 1.2 MB, 720 KB }
 function FloppySize(kb:longint):string;
@@ -620,149 +499,311 @@ begin
     else DuoGroup := RowOther;
 end;
 
-function IsFdHeading(code:integer):boolean;
+{ ////////////////// The lists' rows ////////////////// }
+
+{ The mark before an item: the one in use now (playing, in the drive) }
+function UseMark(inUse:boolean):string;
 begin
-  IsFdHeading := ( code < 0 ) and ( code > RowFirstPack );
+  if inUse then UseMark := ChInUse + ' ' else UseMark := '  ';
 end;
 
-procedure BuildFdRows;
+{ The Sound tab: the HDD Synth's packs, then the Duo's }
+procedure BuildSoundRows;
+var
+  i:integer;
+begin
+  soundList.Count := 0;
+  ListAdd(soundList, RowSynthHeading);
+  if Synth.Present then
+    for i := 0 to Synth.PacksKnown - 1 do ListAdd(soundList, i)
+  else ListAdd(soundList, RowNoSynth);
+  ListAdd(soundList, RowGap);
+  ListAdd(soundList, RowDuoHeading);
+  if Duo.Present then
+    for i := 0 to Duo.PackCount - 1 do ListAdd(soundList, RowSecond - i)
+  else ListAdd(soundList, RowNoDuo);
+end;
+
+procedure SoundRow(code:integer; var text, right:string; var style:TRowStyle);
+var
+  i:integer;
+begin
+  case code of
+    RowSynthHeading: begin
+      text := 'HDD Synth packs';
+      if Synth.Present then right := IntToStr(Synth.PacksKnown);
+      style := rsHeading;
+    end;
+    RowDuoHeading: begin
+      text := 'FDD Synth Duo packs';
+      if Duo.Present then right := IntToStr(Duo.PackCount);
+      style := rsHeading;
+    end;
+    RowGap: style := rsNote;
+    RowNoSynth: begin
+      if ( Backend = bkNone ) then text := '  No IDE Synth Bay found' else text := '  Not answering';
+      style := rsNote;
+    end;
+    RowNoDuo: begin
+      if DuoLooked then text := '  Not found' else text := '  Not looked for yet: R looks';
+      style := rsNote;
+    end;
+  else
+    if ( code >= 0 ) then begin
+      if ( code = Synth.PackIndex ) then style := rsInUse;
+      text := UseMark(style = rsInUse) + PackName(code);
+      right := KindText(Synth.Packs[code].Kind);
+    end
+    else begin
+      i := RowSecond - code;
+      if ( i = DuoPackIndex ) then style := rsInUse;
+      text := UseMark(style = rsInUse) + Duo.Packs[i];
+    end;
+  end;
+end;
+
+{ The Floppy tab: the Duo's images, under 3.5in, 5.25in and Other }
+procedure BuildFloppyRows;
 const
   Groups: array[1..3] of integer = (Row35, Row525, RowOther);
 var
   g,i:integer;
   any:boolean;
 begin
-  fdRowCount := 0;
+  fdList.Count := 0;
   for g := 1 to 3 do begin
     any := false;
     for i := 0 to Duo.FileCount - 1 do
       if ( DuoGroup(i) = Groups[g] ) then begin
-        if not any then begin
-          fdRows[fdRowCount] := Groups[g];
-          inc(fdRowCount);
-          any := true;
-        end;
-        fdRows[fdRowCount] := i;
-        inc(fdRowCount);
+        if not any then ListAdd(fdList, Groups[g]);
+        any := true;
+        ListAdd(fdList, i);
       end;
   end;
-  if ( Duo.PackCount > 0 ) then begin
-    fdRows[fdRowCount] := RowPacks;
-    inc(fdRowCount);
-    for i := 0 to Duo.PackCount - 1 do begin
-      fdRows[fdRowCount] := RowFirstPack - i;
-      inc(fdRowCount);
+end;
+
+{ An image's mark is the drive it's in: there may be two }
+procedure FloppyRow(code:integer; var text, right:string; var style:TRowStyle);
+var
+  i,count:integer;
+  letter:char;
+begin
+  if ( code < 0 ) then begin
+    case code of
+      Row35: text := '3.5in disks';
+      Row525: text := '5.25in disks';
+    else
+      text := 'Other disks';
     end;
-  end;
-end;
-
-function FdListRows:integer;
-begin
-  FdListRows := FrameBottom - 2 - PanelTop;
-end;
-
-procedure MoveFdSel(step:integer);
-var
-  next:integer;
-begin
-  if ( fdRowCount = 0 ) then exit;
-  next := fdSel;
-  repeat
-    next := next + step;
-    if ( next < 0 ) or ( next >= fdRowCount ) then exit;
-  until not IsFdHeading(fdRows[next]);
-  fdSel := next;
-end;
-
-procedure KeepFdVisible;
-begin
-  if ( fdSel >= fdRowCount ) then fdSel := fdRowCount - 1;
-  if ( fdSel < 0 ) then fdSel := 0;
-  if ( fdRowCount > 0 ) and IsFdHeading(fdRows[fdSel]) then MoveFdSel(1);
-  if ( fdSel < fdTop ) then fdTop := fdSel;
-  if ( fdTop > 0 ) and IsFdHeading(fdRows[fdTop - 1]) and ( fdSel = fdTop ) then dec(fdTop);
-  if ( fdSel >= fdTop + FdListRows ) then fdTop := fdSel - FdListRows + 1;
-  if ( fdTop < 0 ) then fdTop := 0;
-end;
-
-{ The highlighted row: an image (>= 0), a pack (<= RowFirstPack), or a heading }
-function FdSelected:integer;
-begin
-  FdSelected := Row35;
-  if ( fdSel >= 0 ) and ( fdSel < fdRowCount ) then FdSelected := fdRows[fdSel];
-end;
-
-procedure DrawFloppyLeft;
-var
-  y,fore:byte;
-  row,code,i,count:integer;
-  text,right,heading:string;
-  inUse:boolean;
-  letters:string;
-begin
-  y := PanelTop;
-  if not Duo.Present then begin
-    LeftLine(y, 'Disks', ColorHeadingText, ColorHeadingBack);
-    LeftLine(y + 1, '', ColorText, ColorBackground);
-    LeftLine(y + 2, 'Nothing to list: no Duo answered', ColorDim, ColorBackground);
-    ClearLeft(y + 3, FrameBottom - 1);
+    count := 0;
+    for i := 0 to Duo.FileCount - 1 do
+      if ( DuoGroup(i) = code ) then inc(count);
+    right := IntToStr(count);
+    style := rsHeading;
     exit;
   end;
-  BuildFdRows;
-  KeepFdVisible;
-  for row := fdTop to fdTop + FdListRows - 1 do begin
-    if ( row >= fdRowCount ) then
+  letter := DriveOfImage(code);
+  if ( letter <> ' ' ) then style := rsInUse;
+  text := letter + ' ' + copy(Duo.Files[code].Name, 1, 26);
+  if ( Duo.Files[code].Kind = DuoFlux ) then right := 'flux' else right := FloppySize(Duo.Files[code].SizeKB);
+end;
+
+{ The Hard disk and CD-ROM tabs: a heading, then the card's images of one kind }
+procedure BuildImageRows(var list:TList; kind:char; heading:integer);
+var
+  i:integer;
+begin
+  list.Count := 0;
+  ListAdd(list, heading);
+  for i := 0 to Bay.FileCount - 1 do
+    if ( Bay.Files[i].Kind = kind ) then ListAdd(list, i);
+end;
+
+{ The Bay's image `name`'s index, or -1 }
+function BayFileIndex(name:string):integer;
+var
+  i:integer;
+begin
+  BayFileIndex := -1;
+  if ( length(name) = 0 ) then exit;
+  for i := 0 to Bay.FileCount - 1 do
+    if ( Bay.Files[i].Name = name ) then BayFileIndex := i;
+end;
+
+{ The image is the hard disk now, or the disc in the CD-ROM drive }
+function InDrive(i:integer):boolean;
+begin
+  if ( Bay.Files[i].Kind = KindCdRom ) then
+    InDrive := ( BayValue('device1') = 'cdrom' ) and ( Bay.Files[i].Name = BayValue('disc') )
+  else InDrive := Bay.Files[i].Name = BayValue('device0');
+end;
+
+procedure ImageRow(code:integer; var text, right:string; var style:TRowStyle);
+var
+  i,count:integer;
+  kind:char;
+begin
+  if ( code < 0 ) then begin
+    if ( code = RowHardDisks ) then begin
+      text := 'Hard disk images';
+      kind := KindHardDisk;
+    end
+    else begin
+      text := 'CD-ROM images';
+      kind := KindCdRom;
+    end;
+    count := 0;
+    for i := 0 to Bay.FileCount - 1 do
+      if ( Bay.Files[i].Kind = kind ) then inc(count);
+    right := IntToStr(count);
+    style := rsHeading;
+    exit;
+  end;
+  if InDrive(code) then style := rsInUse;
+  text := UseMark(style = rsInUse) + Bay.Files[code].Name;
+  right := SizeText(Bay.Files[code].SizeKB);
+end;
+
+{ A row of the tab's list, in words }
+procedure RowParts(code:integer; var text, right:string; var style:TRowStyle);
+begin
+  text := '';
+  right := '';
+  style := rsItem;
+  case tab of
+    MenuSound: SoundRow(code, text, right, style);
+    MenuFloppy: FloppyRow(code, text, right, style);
+  else
+    ImageRow(code, text, right, style);
+  end;
+end;
+
+{ The left panel: the tab's list, the highlight on one item }
+procedure DrawList(var list:TList);
+var
+  y:byte;
+  row:integer;
+  text,right:string;
+  style:TRowStyle;
+begin
+  ListKeepVisible(list);
+  y := PanelTop;
+  for row := list.Top to list.Top + ListRows - 1 do begin
+    if ( row >= list.Count ) then
       LeftLine(y, '', ColorText, ColorBackground)
     else begin
-      code := fdRows[row];
-      if IsFdHeading(code) then begin
-        count := 0;
-        case code of
-          Row35: heading := '3.5in disks';
-          Row525: heading := '5.25in disks';
-          RowOther: heading := 'Other disks';
-        else
-          heading := 'Sound packs';
-        end;
-        if ( code = RowPacks ) then count := Duo.PackCount
-        else for i := 0 to Duo.FileCount - 1 do if ( DuoGroup(i) = code ) then inc(count);
-        LeftRow(y, heading, IntToStr(count), ColorHeadingText, ColorHeadingBack);
-      end
-      else begin
-        if ( code <= RowFirstPack ) then begin
-          i := RowFirstPack - code;
-          inUse := i = DuoPackIndex;
-          if inUse then text := ChPlaying + '  ' + Duo.Packs[i] else text := '   ' + Duo.Packs[i];
-          right := '';
-        end
-        else begin
-          inUse := DriveOfImage(code) <> ' ';
-          text := DriveOfImage(code) + '  ' + copy(Duo.Files[code].Name, 1, 25);
-          if ( Duo.Files[code].Kind = DuoFlux ) then right := 'flux' else right := FloppySize(Duo.Files[code].SizeKB);
-        end;
-        if ( row = fdSel ) and ( tab = menuIndex ) then
-          LeftRow(y, text, right, ColorHighlightText, ColorHighlightBack)
-        else begin
-          if inUse then fore := ColorHighlightText else fore := ColorText;
-          LeftRow(y, text, right, fore, ColorBackground);
-        end;
-      end;
+      RowParts(list.Rows[row], text, right, style);
+      if ( style = rsHeading ) then LeftRow(y, text, right, ColorHeadingText, ColorHeadingBack)
+      else if ( style = rsNote ) then LeftRow(y, text, right, ColorDim, ColorBackground)
+      else if ( row = list.Sel ) and ( tab = menuIndex ) then
+        LeftRow(y, text, right, ColorHighlightText, ColorHighlightBack)
+      else if ( style = rsInUse ) then LeftRow(y, text, right, ColorHighlightText, ColorBackground)
+      else LeftRow(y, text, right, ColorText, ColorBackground);
     end;
     inc(y);
   end;
-  ClearLeft(y, FrameBottom - 2);
-  letters := DuoLetters;
-  if TwoDuoDrives then text := 'A/B in drive A:/B:'
-  else if ( length(letters) = 1 ) then text := letters + ' in drive ' + letters + ':'
-  else text := '';
-  LeftLine(FrameBottom - 1, text + '   ' + ChPlaying + ' playing now', ColorNote, ColorBackground);
 end;
 
-procedure RightNote(var y:byte; text:string);
+{ The list the tab shows }
+function CurrentList:PList;
 begin
-  if ( y >= FrameBottom ) then exit;
-  RightLine(y, text, ColorNote, ColorBackground);
-  inc(y);
+  case tab of
+    MenuFloppy: CurrentList := @fdList;
+    MenuHardDisk: CurrentList := @hdList;
+    MenuCdRom: CurrentList := @cdList;
+  else
+    CurrentList := @soundList;
+  end;
+end;
+
+{ ////////////////// Sound tab ////////////////// }
+
+procedure NoSynthFields(var y:byte);
+begin
+  if ( Backend = bkNone ) then begin
+    RightField(y, 'Not found', '');
+    RightNote(y, 'It answers through the IDE Synth Bay.');
+  end
+  else begin
+    RightField(y, 'Not answering', '');
+    if ( LastAck.Reason = 'nosynth' ) then RightNote(y, 'Is the Synth Link connected?');
+  end;
+end;
+
+{ The synth's details, for the Settings tab }
+procedure SynthFields(var y:byte);
+begin
+  if not Synth.Present then begin
+    NoSynthFields(y);
+    exit;
+  end;
+  RightField(y, 'Firmware', Synth.Firmware);
+  RightField(y, 'State', StateText(Synth.State));
+  RightField(y, 'Supercap', SupercapText);
+  if ( length(BayValue('link')) > 0 ) then RightField(y, 'Synth Link', BayValue('link'));
+end;
+
+{ Each synth's pack and volume, then the highlighted pack }
+procedure DrawSoundRight;
+var
+  y:byte;
+  code:integer;
+begin
+  y := PanelTop;
+  RightHeading(y, 'HDD Synth');
+  if Synth.Present then begin
+    RightField(y, 'Playing', PackName(Synth.PackIndex));
+    RightField(y, 'Volume', VolumeBar(Synth.Volume));
+    RightField(y, 'Balance', BalanceBar(Synth.Balance));
+    RightField(y, 'State', StateText(Synth.State));
+  end
+  else NoSynthFields(y);
+  RightGap(y);
+  RightHeading(y, 'FDD Synth Duo');
+  if Duo.Present then begin
+    RightField(y, 'Playing', DuoValue('pack'));
+    RightField(y, 'Volume', VolumeBar(DuoVolume));
+  end
+  else if DuoLooked then RightNote(y, 'Not found: the Floppy tab says why')
+  else begin
+    RightNote(y, 'Not looked for yet: R looks on the');
+    RightNote(y, 'floppy drives (a second or two)');
+  end;
+
+  code := ListSelected(soundList);
+  if ( code >= 0 ) then begin
+    RightGap(y);
+    RightHeading(y, PackName(code));
+    if ( length(KindText(Synth.Packs[code].Kind)) > 0 ) then RightField(y, 'Sound', KindText(Synth.Packs[code].Kind));
+    RightGap(y);
+    if ( code = Synth.PackIndex ) then RightNote(y, 'Playing now.')
+    else begin
+      RightNote(y, 'Enter plays it on the HDD Synth now:');
+      RightNote(y, 'it spins up in about a second.');
+    end;
+  end
+  else if ( code <= RowSecond ) then begin
+    RightGap(y);
+    RightHeading(y, Duo.Packs[RowSecond - code]);
+    RightGap(y);
+    if ( RowSecond - code = DuoPackIndex ) then RightNote(y, 'Playing now.')
+    else RightNote(y, 'Enter plays it on the Duo now.');
+    RightNote(y, '+ - set the Duo''s volume.');
+  end;
+  ClearRight(y);
+end;
+
+{ ////////////////// Floppy tab ////////////////// }
+
+procedure DrawFloppyLeft;
+begin
+  if not Duo.Present then begin
+    LeftMessage('Disks', 'Nothing to list: no Duo answered', '');
+    exit;
+  end;
+  BuildFloppyRows;
+  if ( fdList.Count = 0 ) then LeftMessage('Disks', 'No disk images on the Duo''s card', '')
+  else DrawList(fdList);
 end;
 
 { Why there's no Duo: what was found on each drive }
@@ -797,22 +838,18 @@ begin
   RightNote(y, 'It answers from its firmware 0.25.0.');
 end;
 
+{ The Duo's details, for the Settings tab }
 procedure DuoFields(var y:byte);
-var
-  letters:string;
 begin
   if not Duo.Present then begin
     NoDuoFields(y);
     exit;
   end;
-  letters := DuoLetters;
   RightField(y, 'Firmware', DuoValue('firmware'));
   if TwoDuoDrives then RightField(y, 'Drives', 'A: and B:')
-  else RightField(y, 'Drives', letters + ': (one drive)');
+  else RightField(y, 'Drives', DuoLetters + ': (one drive)');
   RightField(y, 'Mailbox', DuoValue('mailbox') + ':, cylinder 82');
   if ( DuoBackend = dbFloppy ) and ( ExchangeMs > 0 ) then RightField(y, 'Exchange', SecondsText(ExchangeMs));
-  RightField(y, 'Volume', VolumeBar(DuoVolume));
-  RightField(y, 'Pack', DuoValue('pack'));
 end;
 
 procedure DuoDriveFields(var y:byte; letter:char; full:boolean);
@@ -820,12 +857,15 @@ var
   k,disk:string;
 begin
   if ( y + 2 >= FrameBottom ) then exit;
-  RightGap(y);
+  if ( y > PanelTop ) then RightGap(y);
   RightHeading(y, 'Drive ' + letter + ':');
   k := chr(ord(letter) + 32) + '_';
   disk := DuoDisk(letter);
-  RightField(y, 'Disk', DuoDiskText(disk));
-  if ( length(disk) = 0 ) then exit;
+  if ( length(disk) = 0 ) then begin
+    RightField(y, 'Disk', 'none');
+    exit;
+  end;
+  RightValue(y, 'Disk', DuoDiskText(disk), ColorHighlightText);
   RightField(y, 'Format', DuoValue(k + 'format'));
   if full then RightField(y, 'Head', 'cylinder ' + DuoValue(k + 'cylinder'));
   RightField(y, 'Motor', DuoValue(k + 'motor'));
@@ -835,40 +875,129 @@ begin
   end;
 end;
 
+{ Each drive and its disk, then the highlighted image }
 procedure DrawFloppyRight;
 var
   y:byte;
   code,k:integer;
   letters:string;
+  letter:char;
 begin
   y := PanelTop;
-  RightHeading(y, 'FDD Synth Duo');
-  DuoFields(y);
-  if Duo.Present then begin
-    letters := DuoLetters;
-    for k := 1 to length(letters) do DuoDriveFields(y, letters[k], not TwoDuoDrives);
-    code := FdSelected;
-    if ( code >= 0 ) and ( y + 3 < FrameBottom ) then begin
-      RightGap(y);
-      RightHeading(y, copy(Duo.Files[code].Name, 1, RightWidth - 2));
-      case Duo.Files[code].Kind of
-        DuoFlux: RightField(y, 'Kind', 'a flux image (HFE)');
-        DuoAmiga: RightField(y, 'Kind', 'an Amiga disk');
-      else
-        RightField(y, 'Size', FloppySize(Duo.Files[code].SizeKB));
-      end;
-      if TwoDuoDrives then begin
-        RightNote(y, 'Enter, or A or B, puts it in a drive');
-        RightNote(y, 'now: DOS sees the disk change');
-      end
-      else begin
-        RightNote(y, 'Enter puts it in ' + letters + ': now: DOS sees');
-        RightNote(y, 'the disk change, as with a real drive');
-      end;
+  if not Duo.Present then begin
+    RightHeading(y, 'FDD Synth Duo');
+    NoDuoFields(y);
+    ClearRight(y);
+    exit;
+  end;
+  letters := DuoLetters;
+  for k := 1 to length(letters) do DuoDriveFields(y, letters[k], not TwoDuoDrives);
+  code := ListSelected(fdList);
+  if ( code >= 0 ) and ( y + 3 < FrameBottom ) then begin
+    RightGap(y);
+    RightHeading(y, copy(Duo.Files[code].Name, 1, RightWidth - 2));
+    case Duo.Files[code].Kind of
+      DuoFlux: RightField(y, 'Kind', 'a flux image (HFE)');
+      DuoAmiga: RightField(y, 'Kind', 'an Amiga disk');
+    else
+      RightField(y, 'Size', FloppySize(Duo.Files[code].SizeKB));
+    end;
+    RightGap(y);
+    letter := DriveOfImage(code);
+    if ( letter <> ' ' ) then RightNote(y, 'In ' + letter + ': now.')
+    else if TwoDuoDrives then begin
+      RightNote(y, 'Enter, or A or B, puts it in a drive');
+      RightNote(y, 'now: DOS sees the disk change.');
     end
-    else if ( code <= RowFirstPack ) and ( y + 2 < FrameBottom ) then begin
-      RightGap(y);
-      RightNote(y, 'Enter plays this sample pack');
+    else begin
+      RightNote(y, 'Enter puts it in ' + letters + ': now: DOS sees');
+      RightNote(y, 'the disk change, as with a real drive.');
+    end;
+  end;
+  ClearRight(y);
+end;
+
+{ ////////////////// Hard disk and CD-ROM tabs ////////////////// }
+
+procedure DrawImageLeft(var list:TList; kind:char; heading:integer; caption:string);
+begin
+  BuildImageRows(list, kind, heading);
+  if ( Backend = bkNone ) then LeftMessage(caption, 'No IDE Synth Bay found', '')
+  else if ( list.Count <= 1 ) then LeftMessage(caption, 'None on the card, or the Bay didn''t', 'list them')
+  else DrawList(list);
+end;
+
+{ The disk DOS runs from, the one waiting for the reset, then the highlighted image }
+procedure DrawHardDiskRight;
+var
+  y:byte;
+  i:integer;
+  name,running,next:string;
+begin
+  y := PanelTop;
+  running := BayValue('device0');
+  next := BayValue('device0_next');
+  RightHeading(y, 'The hard disk');
+  if ( length(running) > 0 ) then RightField(y, 'Running', running);
+  if ( length(next) > 0 ) then RightValue(y, 'Next reset', next, ColorHighlightText);
+  i := ListSelected(hdList);
+  if ( i >= 0 ) then begin
+    name := Bay.Files[i].Name;
+    RightGap(y);
+    RightHeading(y, name);
+    RightField(y, 'Size', SizeText(Bay.Files[i].SizeKB));
+    RightGap(y);
+    if ( name = next ) then begin
+      RightNote(y, 'The PC starts from it at its next');
+      RightNote(y, 'reset.');
+    end
+    else if ( name = running ) and ( length(next) = 0 ) then RightNote(y, 'DOS is running from it now.')
+    else begin
+      RightNote(y, 'Enter makes it the hard disk from the');
+      RightNote(y, 'PC''s next reset: DOS can''t change');
+      RightNote(y, 'disk while it''s running from one.');
+    end;
+  end;
+  ClearRight(y);
+end;
+
+{ The disc in the drive, then the highlighted image }
+procedure DrawCdRomRight;
+var
+  y:byte;
+  i:integer;
+  disc:string;
+  hasDrive:boolean;
+begin
+  y := PanelTop;
+  hasDrive := BayValue('device1') = 'cdrom';
+  disc := BayValue('disc');
+  if ( disc = '-' ) then disc := '';
+  RightHeading(y, 'In the drive');
+  if not hasDrive then begin
+    RightField(y, 'Disc', 'no CD-ROM drive');
+    RightGap(y);
+    RightNote(y, 'The Bay''s second drive isn''t a CD-ROM');
+    RightNote(y, 'drive: Device 1, on the Settings tab,');
+    RightNote(y, 'changes it from the next power-on.');
+  end
+  else if ( length(disc) = 0 ) then RightField(y, 'Disc', 'none')
+  else begin
+    RightValue(y, 'Disc', disc, ColorHighlightText);
+    i := BayFileIndex(disc);
+    if ( i >= 0 ) then RightField(y, 'Size', SizeText(Bay.Files[i].SizeKB));
+  end;
+  i := ListSelected(cdList);
+  if ( i >= 0 ) then begin
+    RightGap(y);
+    RightHeading(y, Bay.Files[i].Name);
+    RightField(y, 'Size', SizeText(Bay.Files[i].SizeKB));
+    RightGap(y);
+    if InDrive(i) then RightNote(y, 'In the drive now.')
+    else if hasDrive then begin
+      RightNote(y, 'Enter puts it in the drive now:');
+      RightNote(y, 'programs using the CD-ROM see the');
+      RightNote(y, 'disc change.');
     end;
   end;
   ClearRight(y);
@@ -984,7 +1113,8 @@ begin
     if not RowShown(row) then
       { not this one's }
     else if ( length(SettingRows[row].Key) = 0 ) then begin
-      LeftLine(y, SettingRows[row].Caption, ColorHeadingText, ColorHeadingBack);
+      if ( SettingRows[row].Caption[1] = ' ' ) then LeftLine(y, SettingRows[row].Caption, ColorNote, ColorBackground)
+      else LeftLine(y, SettingRows[row].Caption, ColorHeadingText, ColorHeadingBack);
       inc(y);
     end
     else begin
@@ -998,7 +1128,7 @@ begin
       end
       else
         text := text + '-';
-      fore := ColorText;
+      if IsShownOnlyRow(row) then fore := ColorDim else fore := ColorText;
       back := ColorBackground;
       if ( row = setSel ) and ( tab = menuIndex ) then begin
         fore := ColorHighlightText;
@@ -1033,7 +1163,7 @@ begin
   else if ( key = 'cdrom' ) then begin
     Say('The disc in the CD-ROM drive when the');
     Say('PC starts. To change the disc now, use');
-    Say('the Bay tab.');
+    Say('the CD-ROM tab.');
   end
   else if ( key = 'seek_timing' ) then begin
     Say('Hold each disk command for as long as');
@@ -1098,20 +1228,21 @@ begin
   end;
 end;
 
+{ The highlighted setting, then the details of the device it belongs to:
+  the HDD Synth, the Bay or the Duo. With no setting to highlight, the
+  synth's and the Bay's }
 procedure DrawSettingsRight;
 var
   y:byte;
   key,next,now:string;
-  duoRow:boolean;
+  selected:boolean;
 begin
   y := PanelTop;
-  duoRow := false;
-  if ( setSel >= 1 ) and ( setSel <= SettingRowCount ) and RowShown(setSel)
-     and ( length(SettingRows[setSel].Key) > 0 ) then begin
+  selected := ( setSel >= 1 ) and ( setSel <= SettingRowCount ) and RowShown(setSel)
+              and ( length(SettingRows[setSel].Key) > 0 );
+  if selected then begin
     key := SettingRows[setSel].Key;
-    duoRow := IsDuoRow(setSel);
-    if duoRow then RightHeading(y, SettingRows[setSel].Caption + ' (FDD Synth Duo)')
-    else RightHeading(y, SettingRows[setSel].Caption);
+    RightHeading(y, SettingRows[setSel].Caption);
     RightGap(y);
     SettingWords(y, key);
     RightGap(y);
@@ -1128,8 +1259,8 @@ begin
       RightNote(y, 'Shown only: the PC must be right for');
       RightNote(y, 'it, so it''s set in HDDSYNTH.INI.');
     end
-    else if duoRow then begin
-      RightNote(y, 'Enter changes it: the Duo reads it when');
+    else if IsDuoRow(setSel) then begin
+      RightNote(y, 'Enter changes it. The Duo reads it as');
       RightNote(y, 'it starts, the next time the PC is on.');
     end
     else begin
@@ -1138,13 +1269,22 @@ begin
     end;
     RightGap(y);
   end;
-  if duoRow then begin
+  if selected and IsDuoRow(setSel) then begin
     RightHeading(y, 'FDD Synth Duo');
     DuoFields(y);
   end
-  else begin
+  else if selected and ( setSel > SynthLastRow ) then begin
     RightHeading(y, 'IDE Synth Bay');
     BayFields(y);
+  end
+  else begin
+    RightHeading(y, 'HDD Synth');
+    SynthFields(y);
+    if not selected then begin
+      RightGap(y);
+      RightHeading(y, 'IDE Synth Bay');
+      BayFields(y);
+    end;
   end;
   ClearRight(y);
 end;
@@ -1176,20 +1316,24 @@ begin
   WriteAt(1, 2, PadRight(MenuHints[menuIndex], Columns), ColorText, ColorBackground);
 end;
 
+{ The keys for the tab, and on Sound for the synth whose pack is highlighted }
 procedure DrawFooterKeys;
 begin
-  if ( tab = MenuSynth ) then
-    DrawFooter(' [F1] Help  [Enter] Play pack  [+/-] Volume  [</>] Balance  [R] Refresh  [Esc] Exit')
-  else if ( tab = MenuSettings ) then
-    DrawFooter(' [F1] Help  [Enter] Change  [R] Refresh  [Esc] Exit')
-  else if ( tab = MenuFloppy ) and not Duo.Present then
-    DrawFooter(' [F1] Help  [R] Look again  [Esc] Exit')
-  else if ( tab = MenuFloppy ) and TwoDuoDrives then
-    DrawFooter(' [F1] Help  [Enter] Insert  [A]/[B] Into A:/B:  [E] Eject  [+/-] Volume  [Esc] Exit')
-  else if ( tab = MenuFloppy ) then
-    DrawFooter(' [F1] Help  [Enter] Insert  [E] Eject  [+/-] Volume  [R] Refresh  [Esc] Exit')
+  case tab of
+    MenuSound:
+      if ( ListSelected(soundList) <= RowSecond ) then
+        DrawFooter(' [F1] Help  [Enter] Play  [+/-] Duo volume  [Esc] Exit')
+      else
+        DrawFooter(' [F1] Help  [Enter] Play  [+/-] Volume  [</>] Balance  [Esc] Exit');
+    MenuFloppy:
+      if not Duo.Present then DrawFooter(' [F1] Help  [R] Look again  [Esc] Exit')
+      else if TwoDuoDrives then DrawFooter(' [F1] Help  [Enter] Insert  [A]/[B] Into A:/B:  [E] Eject  [Esc] Exit')
+      else DrawFooter(' [F1] Help  [Enter] Insert  [E] Eject  [Esc] Exit');
+    MenuHardDisk: DrawFooter(' [F1] Help  [Enter] Use from the next reset  [Esc] Exit');
+    MenuCdRom: DrawFooter(' [F1] Help  [Enter] Insert  [E] Eject  [Esc] Exit');
   else
-    DrawFooter(' [F1] Help  [Enter] Insert/Boot  [E] Eject disc  [R] Refresh  [Esc] Exit');
+    DrawFooter(' [F1] Help  [Enter] Change  [Esc] Exit');
+  end;
 end;
 
 procedure DrawAll;
@@ -1199,21 +1343,27 @@ begin
   TextBackground(ColorBackground);
   DrawMenu;
   DrawFrame;
-  if ( tab = MenuSynth ) then begin
-    DrawSynthLeft;
-    DrawSynthRight;
-  end
-  else if ( tab = MenuSettings ) then begin
+  case tab of
+    MenuSound: begin
+      BuildSoundRows;
+      DrawList(soundList);
+      DrawSoundRight;
+    end;
+    MenuFloppy: begin
+      DrawFloppyLeft;
+      DrawFloppyRight;
+    end;
+    MenuHardDisk: begin
+      DrawImageLeft(hdList, KindHardDisk, RowHardDisks, 'Hard disk images');
+      DrawHardDiskRight;
+    end;
+    MenuCdRom: begin
+      DrawImageLeft(cdList, KindCdRom, RowCdRoms, 'CD-ROM images');
+      DrawCdRomRight;
+    end;
+  else
     DrawSettingsLeft;
     DrawSettingsRight;
-  end
-  else if ( tab = MenuFloppy ) then begin
-    DrawFloppyLeft;
-    DrawFloppyRight;
-  end
-  else begin
-    DrawBayLeft;
-    DrawBayRight;
   end;
 
   if ( tab = MenuFloppy ) then begin
@@ -1282,26 +1432,23 @@ end;
 procedure Help;
 const
   Width = 64;
-  Lines = 18;
+  Lines = 15;
   HelpText: array[1..Lines] of string[60] = (
-    'Left/Right  the menu: Synth, Bay, Floppy, Settings...',
+    'Left/Right  the tabs: Sound, Floppy, Hard disk, CD-ROM,',
+    '            Settings (Tab goes round them too)',
     'Up/Down     move through the list',
-    'Enter       on Synth: play the highlighted pack',
-    '            on Bay: put a CD image in the CD-ROM drive, or',
-    '            make a disk image the hard disk at the next reset',
-    '            on Floppy: put the disk in the Duo''s drive now,',
-    '            or play its sample pack',
-    '            on Settings: change the highlighted setting',
+    'Enter       use the highlighted one: play the pack, put in',
+    '            the disk or disc, or change the setting',
     'A B         on Floppy: put the disk in A: or B:',
-    '+ -         volume (on Floppy: the Duo''s); < > balance',
-    'E           take out the CD (on Floppy: the floppy)',
+    'E           take the disk or disc out',
+    '+ - < >     on Sound: volume and balance of the synth',
+    '            whose pack is highlighted',
     'R           ask the Bay, the synth and the Duo again',
     'Esc         exit to DOS',
     '',
-    'The Bay''s hard disk can''t change while DOS runs from it,',
-    'so a new one waits for the reset button. A floppy changes',
-    'at once; each change to the Duo takes a second or so, as',
-    'it goes through the disk (cylinder 82, past the end).');
+    'Sound, Floppy and CD-ROM change at once (the Duo in a',
+    'second or so). The hard disk waits for the PC''s reset,',
+    'and Settings for the next power-on.');
 var
   x1,y1:byte;
   i:integer;
@@ -1412,54 +1559,68 @@ begin
   else Done(false, message);
 end;
 
-procedure PlayPack;
+procedure PlayPack(i:integer);
 var
   message:string;
 begin
-  if not Synth.Present or ( packSel >= Synth.PacksKnown ) then exit;
-  if ( packSel = Synth.PackIndex ) then begin
+  if not Synth.Present or ( i < 0 ) or ( i >= Synth.PacksKnown ) then exit;
+  if ( i = Synth.PackIndex ) then begin
     Done(true, 'Already playing');
     exit;
   end;
-  if Command('HDC,1,PACK,' + IntToStr(packSel), message) then begin
+  if Command('HDC,1,PACK,' + IntToStr(i), message) then begin
     Request('HDQ,1,STATUS');
-    Done(true, 'Playing ' + PackName(packSel));
+    Done(true, 'Playing ' + PackName(i));
   end
   else Done(false, message);
 end;
 
-procedure InsertOrBoot;
+{ Enter on the CD-ROM tab: the highlighted image into the drive }
+procedure InsertDisc;
 var
   i:integer;
   message,name:string;
 begin
-  i := SelectedFile;
+  i := ListSelected(cdList);
   if ( i < 0 ) then exit;
   name := Bay.Files[i].Name;
-  if ( Bay.Files[i].Kind = KindCdRom ) then begin
-    if ( BayValue('device1') <> 'cdrom' ) then begin
-      Done(false, 'The Bay has no CD-ROM drive set up');
-      exit;
-    end;
-    if ( name = BayValue('disc') ) then begin
-      Done(true, 'Already in the drive');
-      exit;
-    end;
-    if not Confirm('Change disc', 'Put ' + name + ' in the CD-ROM drive?',
-                   'Programs using the CD-ROM see the disc change.', 'Insert') then exit;
-    if Command('SBC,1,DISC,' + name, message) then Done(true, name + ' is in the drive')
-    else Done(false, message);
-  end
-  else begin
-    if ( name = BayValue('device0') ) and ( length(BayValue('device0_next')) = 0 ) then begin
-      Done(true, 'Already the hard disk');
-      exit;
-    end;
-    if not Confirm('Next boot''s hard disk', 'Make ' + name + ' the hard disk from the next reset?',
-                   'DOS keeps running from ' + BayValue('device0') + ' until then.', 'Use it') then exit;
-    if Command('SBC,1,SET,device0,' + name, message) then Done(true, name + ' from the next reset')
-    else Done(false, message);
+  if ( BayValue('device1') <> 'cdrom' ) then begin
+    Done(false, 'The Bay has no CD-ROM drive set up');
+    exit;
   end;
+  if ( name = BayValue('disc') ) then begin
+    Done(true, 'Already in the drive');
+    exit;
+  end;
+  if not Confirm('Change disc', 'Put ' + name + ' in the CD-ROM drive?',
+                 'Programs using the CD-ROM see the disc change.', 'Insert') then exit;
+  if Command('SBC,1,DISC,' + name, message) then Done(true, name + ' is in the drive')
+  else Done(false, message);
+  RefreshBay;
+end;
+
+{ Enter on the Hard disk tab: the highlighted image as the hard disk from
+  the PC's next reset }
+procedure UseHardDisk;
+var
+  i:integer;
+  message,name:string;
+begin
+  i := ListSelected(hdList);
+  if ( i < 0 ) then exit;
+  name := Bay.Files[i].Name;
+  if ( name = BayValue('device0') ) and ( length(BayValue('device0_next')) = 0 ) then begin
+    Done(true, 'Already the hard disk');
+    exit;
+  end;
+  if ( name = BayValue('device0_next') ) then begin
+    Done(true, 'Already the hard disk from the next reset');
+    exit;
+  end;
+  if not Confirm('Next boot''s hard disk', 'Make ' + name + ' the hard disk from the next reset?',
+                 'DOS keeps running from ' + BayValue('device0') + ' until then.', 'Use it') then exit;
+  if Command('SBC,1,SET,device0,' + name, message) then Done(true, name + ' from the next reset')
+  else Done(false, message);
   RefreshBay;
 end;
 
@@ -1582,7 +1743,7 @@ var
   code:integer;
 begin
   if not Duo.Present then exit;
-  code := FdSelected;
+  code := ListSelected(fdList);
   if ( code >= 0 ) then InsertFloppy(code, letter);
 end;
 
@@ -1590,6 +1751,7 @@ procedure PlayDuoPack(i:integer);
 var
   message:string;
 begin
+  if not Duo.Present or ( i < 0 ) or ( i >= Duo.PackCount ) then exit;
   if ( i = DuoPackIndex ) then begin
     Done(true, 'Already playing');
     exit;
@@ -1602,18 +1764,17 @@ begin
   else Done(false, message);
 end;
 
+{ Enter on the Floppy tab: the highlighted image into a drive (which, with two) }
 procedure FloppyEnter;
 var
   code:integer;
   letter:char;
 begin
   if not Duo.Present then exit;
-  code := FdSelected;
-  if ( code <= RowFirstPack ) then PlayDuoPack(RowFirstPack - code)
-  else if ( code >= 0 ) then begin
-    letter := ChooseDrive('Insert ' + copy(Duo.Files[code].Name, 1, 30));
-    if ( letter <> ' ' ) then InsertFloppy(code, letter);
-  end;
+  code := ListSelected(fdList);
+  if ( code < 0 ) then exit;
+  letter := ChooseDrive('Insert ' + copy(Duo.Files[code].Name, 1, 30));
+  if ( letter <> ' ' ) then InsertFloppy(code, letter);
 end;
 
 procedure SetDuoVolume(volume:integer);
@@ -1630,6 +1791,31 @@ begin
   else Done(false, message);
 end;
 
+{ ////////////////// The Sound tab's keys ////////////////// }
+
+{ Each acts on the synth whose pack is highlighted }
+
+procedure SoundEnter;
+var
+  code:integer;
+begin
+  code := ListSelected(soundList);
+  if ( code >= 0 ) then PlayPack(code)
+  else if ( code <= RowSecond ) then PlayDuoPack(RowSecond - code);
+end;
+
+procedure SoundVolume(step:integer);
+begin
+  if ( ListSelected(soundList) <= RowSecond ) then SetDuoVolume(DuoVolume + step)
+  else SetVolume(Synth.Volume + step);
+end;
+
+procedure SoundBalance(step:integer);
+begin
+  if ( ListSelected(soundList) <= RowSecond ) then Done(true, 'Only the HDD Synth has a balance')
+  else SetBalance(Synth.Balance + step);
+end;
+
 procedure EjectFloppy;
 var
   code,k:integer;
@@ -1639,7 +1825,7 @@ var
 begin
   if not Duo.Present then exit;
   letter := ' ';
-  code := FdSelected;
+  code := ListSelected(fdList);
   if ( code >= 0 ) then letter := DriveOfImage(code);
   if ( letter = ' ' ) then begin
     letters := DuoLetters;
@@ -1812,26 +1998,13 @@ begin
     while ( step < 0 ) do begin MoveSetSel(-1); inc(step); end;
     while ( step > 0 ) do begin MoveSetSel(1); dec(step); end;
   end
-  else if ( tab = MenuFloppy ) then begin
-    while ( step < 0 ) do begin MoveFdSel(-1); inc(step); end;
-    while ( step > 0 ) do begin MoveFdSel(1); dec(step); end;
-  end
-  else if ( tab = MenuSynth ) then begin
-    packSel := packSel + step;
-    if ( packSel < 0 ) then packSel := 0;
-    if ( packSel >= Synth.PacksKnown ) then packSel := Synth.PacksKnown - 1;
-  end
-  else if ( step < -1 ) or ( step > 1 ) then begin
-    while ( step < 0 ) do begin MoveBaySel(-1); inc(step); end;
-    while ( step > 0 ) do begin MoveBaySel(1); dec(step); end;
-  end
-  else MoveBaySel(step);
+  else ListMove(CurrentList^, step);
 end;
 
 procedure MoveMenu(step:integer);
 begin
   menuIndex := ( menuIndex + step + MenuCount ) mod MenuCount;
-  if ( menuIndex in [MenuSynth, MenuBay, MenuFloppy, MenuSettings] ) then tab := menuIndex;
+  if ( menuIndex <> MenuExit ) then tab := menuIndex;
 end;
 
 procedure HandleKey;
@@ -1849,34 +2022,31 @@ begin
         #80: MoveList(1);                { Down }
         #73: MoveList(-10);              { Page Up }
         #81: MoveList(10);               { Page Down }
-        #71: MoveList(-MaxFiles - MaxPacks); { Home }
-        #79: MoveList(MaxFiles + MaxPacks);  { End }
+        #71: MoveList(-MaxListRows);     { Home }
+        #79: MoveList(MaxListRows);      { End }
         #75: MoveMenu(-1);               { Left }
         #77: MoveMenu(1);                { Right }
       end;
     end;
-    #9: begin { Tab: Synth, Bay, Floppy, Settings in turn }
-      if ( tab = MenuSynth ) then tab := MenuBay
-      else if ( tab = MenuBay ) then tab := MenuFloppy
-      else if ( tab = MenuFloppy ) then tab := MenuSettings
-      else tab := MenuSynth;
+    #9: begin { Tab: the tabs in turn }
+      tab := ( tab + 1 ) mod MenuExit;
       menuIndex := tab;
     end;
     #13: case menuIndex of
-      MenuSynth: PlayPack;
-      MenuBay: InsertOrBoot;
+      MenuSound: SoundEnter;
       MenuFloppy: FloppyEnter;
+      MenuHardDisk: UseHardDisk;
+      MenuCdRom: InsertDisc;
       MenuSettings: ChangeSetting;
-      MenuRefresh: RefreshNow;
       MenuExit: quit := true;
     end;
     #27: quit := true;
-    '+', '=': if ( tab = MenuFloppy ) then SetDuoVolume(DuoVolume + 5) else SetVolume(Synth.Volume + 5);
-    '-', '_': if ( tab = MenuFloppy ) then SetDuoVolume(DuoVolume - 5) else SetVolume(Synth.Volume - 5);
-    '<', ',': SetBalance(Synth.Balance - 5);
-    '>', '.': SetBalance(Synth.Balance + 5);
+    '+', '=': if ( tab = MenuSound ) then SoundVolume(5);
+    '-', '_': if ( tab = MenuSound ) then SoundVolume(-5);
+    '<', ',': if ( tab = MenuSound ) then SoundBalance(-5);
+    '>', '.': if ( tab = MenuSound ) then SoundBalance(5);
     'r', 'R': RefreshNow;
-    'e', 'E': if ( tab = MenuFloppy ) then EjectFloppy else Eject;
+    'e', 'E': if ( tab = MenuFloppy ) then EjectFloppy else if ( tab = MenuCdRom ) then Eject;
     'a', 'A': if ( tab = MenuFloppy ) then FloppyInto('A');
     'b', 'B': if ( tab = MenuFloppy ) then FloppyInto('B');
   end;
@@ -2138,30 +2308,49 @@ end;
 { ////////////////// Start ////////////////// }
 
 { For tests: save the text screen (character and colour for each cell,
-  4,000 bytes) to SCREEN.BIN. scripts/screen.py shows it }
-procedure SaveScreen;
+  4,000 bytes) to a file. scripts/screen.py shows it }
+procedure SaveScreen(name:string);
 var
   f:file;
 begin
-  Assign(f, 'SCREEN.BIN');
+  Assign(f, name);
   Rewrite(f, 1);
   BlockWrite(f, Mem[$B800:0], 4000);
   Close(f);
 end;
 
-{ /DUMP=SYNTH, BAY, FLOPPY or SETTINGS: draw that tab, save it and exit }
+{ /DUMP=SOUND, FLOPPY, HARDDISK, CDROM or SETTINGS: draw that tab, save it
+  to SCREEN.BIN and exit }
 procedure DumpScreen(which:string);
+var
+  t:integer;
 begin
-  if ( which = 'BAY' ) then menuIndex := MenuBay
-  else if ( which = 'FLOPPY' ) then menuIndex := MenuFloppy
-  else if ( which = 'SETTINGS' ) then menuIndex := MenuSettings
-  else menuIndex := MenuSynth;
+  menuIndex := MenuSound;
+  for t := 0 to MenuExit - 1 do
+    if ( which = TabNames[t] ) then menuIndex := t;
   tab := menuIndex;
   StartScreen;
   ClrScr;
   DrawAll;
-  SaveScreen;
+  SaveScreen('SCREEN.BIN');
   EndScreen;
+end;
+
+{ /DUMP=EXIT, after a scripted session: the screen as it was left
+  (SCREEN.BIN), then each tab (KEYS1.BIN, Sound, to KEYS5.BIN, Settings) }
+procedure DumpEveryTab;
+var
+  t:integer;
+begin
+  DrawAll;
+  SaveScreen('SCREEN.BIN');
+  note := '';
+  for t := 0 to MenuExit - 1 do begin
+    tab := t;
+    menuIndex := t;
+    DrawAll;
+    SaveScreen('KEYS' + IntToStr(t + 1) + '.BIN');
+  end;
 end;
 
 var
@@ -2265,15 +2454,20 @@ begin
     halt(0);
   end;
 
-  if ( Backend = bkNone ) then menuIndex := MenuFloppy else menuIndex := MenuSynth;
+  if ( Backend = bkNone ) then menuIndex := MenuFloppy else menuIndex := MenuSound;
   tab := menuIndex;
-  fdSel := 0;
-  fdTop := 0;
-  packSel := Synth.PackIndex;
-  if ( packSel < 0 ) then packSel := 0;
-  packTop := 0;
-  baySel := 0;
-  bayTop := 0;
+  { Each list starts on what's in use: the pack playing, the disk DOS runs
+    from, the disc in the drive }
+  FillChar(soundList, SizeOf(soundList), 0);
+  FillChar(fdList, SizeOf(fdList), 0);
+  FillChar(hdList, SizeOf(hdList), 0);
+  FillChar(cdList, SizeOf(cdList), 0);
+  BuildSoundRows;
+  ListFind(soundList, Synth.PackIndex);
+  BuildImageRows(hdList, KindHardDisk, RowHardDisks);
+  ListFind(hdList, BayFileIndex(BayValue('device0')));
+  BuildImageRows(cdList, KindCdRom, RowCdRoms);
+  ListFind(cdList, BayFileIndex(BayValue('disc')));
   setSel := 0;
   note := '';
   quit := false;
@@ -2291,9 +2485,6 @@ begin
     LookOnFirstVisit;
   until quit;
   { /DUMP=EXIT: the screen as it was when Esc was pressed, for scripted tests }
-  if ( dumpTab = 'EXIT' ) then begin
-    DrawAll;
-    SaveScreen;
-  end;
+  if ( dumpTab = 'EXIT' ) then DumpEveryTab;
   EndScreen;
 end.

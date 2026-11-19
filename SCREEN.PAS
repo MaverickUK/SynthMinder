@@ -29,7 +29,7 @@ const
   ChShade = #176;
   ChLine = #196;
   ChMarker = #254;
-  ChPlaying = #14;
+  ChInUse = #16;     { In a list: the pack playing, the disc in the drive, the disk DOS runs from }
 
 var
   ScreenRows:byte;
